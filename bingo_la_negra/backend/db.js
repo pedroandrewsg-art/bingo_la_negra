@@ -1,0 +1,265 @@
+// db.js — Inicialización y esquema de la base de datos SQLite
+const Database = require('better-sqlite3');
+const fs = require('fs');
+const path = require('path');
+const bcrypt = require('bcryptjs');
+
+// En producción (Render), DATA_DIR debe apuntar al disco persistente montado
+// (ej. /var/data) para que bingo.db sobreviva a reinicios/deploys. Sin esa
+// variable, cae en la carpeta del backend (comportamiento local de siempre).
+const dataDir = process.env.DATA_DIR || __dirname;
+fs.mkdirSync(dataDir, { recursive: true });
+
+const db = new Database(path.join(dataDir, 'bingo.db'));
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+// Migración: el esquema anterior guardaba a los jugadores en `users` (con
+// saldo/recargas). Ahora los jugadores son sesiones temporales (jugadores)
+// y `users` queda solo para administradores. Si detectamos el esquema
+// viejo, se recrean las tablas afectadas desde cero (datos de demo/dev).
+const usersInfo = db.prepare("PRAGMA table_info(users)").all();
+const isOldSchema = usersInfo.some((c) => c.name === 'saldo');
+if (isOldSchema) {
+  db.exec(`
+    DROP TABLE IF EXISTS ganadores;
+    DROP TABLE IF EXISTS ventas;
+    DROP TABLE IF EXISTS recargas;
+    DROP TABLE IF EXISTS cartones;
+    DROP TABLE IF EXISTS sorteos;
+    DROP TABLE IF EXISTS users;
+  `);
+}
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS jugadores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  whatsapp TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sorteos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha_hora TEXT NOT NULL,
+  rango_desde INTEGER NOT NULL,
+  rango_hasta INTEGER NOT NULL,
+  color TEXT NOT NULL,
+  tipo_venta INTEGER NOT NULL DEFAULT 1, -- tamaño del combo: 1,2,3,4
+  costo REAL NOT NULL, -- costo por cartón individual
+  porcentaje_ganancia REAL NOT NULL,
+  modo_premio TEXT NOT NULL DEFAULT 'porcentaje', -- porcentaje (% del premio acumulado) | monto_fijo (Bs fijos por figura) | sin_premio (sin montos definidos)
+  patron TEXT NOT NULL, -- linea_horizontal, linea_vertical, diagonal, cruz_x, diamante, cuatro_esquinas, carton_lleno, letra_l, letra_t
+  estatus TEXT NOT NULL DEFAULT 'activo', -- activo | en_juego | finalizado
+  numeros_extraidos TEXT NOT NULL DEFAULT '[]',
+  bola_actual INTEGER,
+  ganador_id INTEGER,
+  encabezado TEXT NOT NULL DEFAULT '', -- texto libre para el mensaje de WhatsApp
+  pie_pagina TEXT NOT NULL DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS cartones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero INTEGER NOT NULL,
+  color TEXT NOT NULL,
+  grid TEXT NOT NULL, -- JSON 5x5 (fila x columna B-I-N-G-O), centro = null (LIBRE)
+  sorteo_id INTEGER REFERENCES sorteos(id) ON DELETE SET NULL,
+  grupo INTEGER, -- número de grupo/combo dentro del sorteo
+  estado TEXT NOT NULL DEFAULT 'disponible', -- disponible | vendido (apartado, sin verificar) | pagado (verificado por admin)
+  owner_id INTEGER REFERENCES jugadores(id) ON DELETE SET NULL,
+  marcados TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS ventas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero_transaccion TEXT UNIQUE NOT NULL,
+  sorteo_id INTEGER REFERENCES sorteos(id),
+  cartones_ids TEXT NOT NULL, -- JSON array
+  jugador_id INTEGER REFERENCES jugadores(id),
+  monto REAL NOT NULL,
+  fecha TEXT DEFAULT (datetime('now')),
+  estatus TEXT NOT NULL DEFAULT 'completado' -- completado | cancelado
+);
+
+CREATE TABLE IF NOT EXISTS ganadores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sorteo_id INTEGER REFERENCES sorteos(id),
+  jugador_id INTEGER REFERENCES jugadores(id),
+  carton_id INTEGER REFERENCES cartones(id),
+  patron TEXT,
+  premio REAL,
+  fecha TEXT DEFAULT (datetime('now')),
+  pagado INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS sorteo_patrones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sorteo_id INTEGER NOT NULL REFERENCES sorteos(id) ON DELETE CASCADE,
+  patron TEXT NOT NULL,
+  porcentaje REAL NOT NULL DEFAULT 0, -- % del premio acumulado (modo_premio = 'porcentaje'); suman 100 entre las figuras del sorteo
+  monto REAL, -- Bs fijos para esta figura (modo_premio = 'monto_fijo'); NULL en los demás modos
+  orden INTEGER NOT NULL DEFAULT 0
+);
+
+-- Reclamos de BINGO: el jugador marca su cartón manualmente (ya no hay
+-- sorteador automático interno) y cuando su marcado completa una figura se
+-- crea un reclamo pendiente que el administrador debe validar o invalidar
+-- antes de que cuente como ganador oficial (tabla ganadores).
+CREATE TABLE IF NOT EXISTS reclamos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sorteo_id INTEGER NOT NULL REFERENCES sorteos(id),
+  carton_id INTEGER REFERENCES cartones(id) ON DELETE SET NULL,
+  carton_numero INTEGER, -- snapshot: se conserva aunque el cartón se elimine luego
+  jugador_id INTEGER REFERENCES jugadores(id) ON DELETE SET NULL,
+  patron TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'pendiente', -- pendiente | valido | invalido
+  fecha TEXT DEFAULT (datetime('now'))
+);
+
+-- Catálogo persistente: el grid de la Carta N de un color+combo es siempre
+-- el mismo entre sorteos (no se regenera al azar cada vez). cartones sigue
+-- siendo la instancia por sorteo (estado de venta/marcado); esta tabla es la
+-- fuente de verdad del contenido fijo (grid) por color+tipo_venta+carta+letra.
+CREATE TABLE IF NOT EXISTS plantillas_cartones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  color TEXT NOT NULL,
+  tipo_venta INTEGER NOT NULL,
+  carta INTEGER NOT NULL,
+  letra TEXT NOT NULL,
+  numero INTEGER NOT NULL,
+  grid TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_plantillas_unica ON plantillas_cartones(color, tipo_venta, carta, letra);
+
+-- Figuras/patrones ganadores definidos por el admin (además de las fijas de
+-- patterns.js), dibujadas a mano sobre una máscara 5x5 y guardadas para
+-- reusarse en cualquier sorteo futuro.
+CREATE TABLE IF NOT EXISTS patrones_personalizados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  mascara TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Configuración global clave/valor (ej. link del grupo de WhatsApp).
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
+
+-- Marcado del panel de apoyo 1-75, independiente de los cartones del
+-- jugador: el panel sirve para llevar la cuenta de qué números ya se
+-- cantaron, tenga o no tenga ese número en algún cartón propio — antes solo
+-- se podía marcar un número ahí si estaba en al menos un cartón del jugador.
+-- (Ya no se usa: BINGOLANEGRA eliminó la sala de juego automática. Se deja la
+-- tabla sin borrar para no arriesgar un DROP TABLE contra producción.)
+CREATE TABLE IF NOT EXISTS tablero_marcas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  jugador_id INTEGER NOT NULL REFERENCES jugadores(id),
+  sorteo_id INTEGER NOT NULL REFERENCES sorteos(id),
+  numeros TEXT NOT NULL DEFAULT '[]'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tablero_marcas_unico ON tablero_marcas(jugador_id, sorteo_id);
+
+-- Catálogo persistente de cartones personalizados: un set de imágenes ya
+-- diseñadas (ej. cartones físicos escaneados/diagramados), numeradas en
+-- orden. El admin lo crea pegando la lista de links (uno por línea) en
+-- "Cartones Personalizados"; luego un sorteo puede asignarlo y cada cartón
+-- (por su numero) resuelve su imagen real en vez de mostrar el grid
+-- calculado al azar.
+CREATE TABLE IF NOT EXISTS catalogos_imagenes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  color TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS catalogo_imagenes_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  catalogo_id INTEGER NOT NULL REFERENCES catalogos_imagenes(id) ON DELETE CASCADE,
+  numero INTEGER NOT NULL,
+  url TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_catalogo_item_unico ON catalogo_imagenes_items(catalogo_id, numero);
+`);
+
+// Migración incremental: agrega columnas nuevas a `sorteos` si la tabla ya
+// existía de una versión anterior sin encabezado/pie_pagina.
+const sorteosInfo = db.prepare("PRAGMA table_info(sorteos)").all();
+if (!sorteosInfo.some((c) => c.name === 'encabezado')) {
+  db.exec("ALTER TABLE sorteos ADD COLUMN encabezado TEXT NOT NULL DEFAULT ''");
+}
+if (!sorteosInfo.some((c) => c.name === 'pie_pagina')) {
+  db.exec("ALTER TABLE sorteos ADD COLUMN pie_pagina TEXT NOT NULL DEFAULT ''");
+}
+if (!sorteosInfo.some((c) => c.name === 'modo_premio')) {
+  db.exec("ALTER TABLE sorteos ADD COLUMN modo_premio TEXT NOT NULL DEFAULT 'porcentaje'");
+}
+// Migración incremental: catálogo de cartones personalizados asignado a este
+// sorteo (opcional). Si se borra el catálogo, `ON DELETE SET NULL` deja este
+// campo en NULL y el sorteo vuelve a mostrar el grid calculado.
+if (!sorteosInfo.some((c) => c.name === 'catalogo_imagenes_id')) {
+  db.exec("ALTER TABLE sorteos ADD COLUMN catalogo_imagenes_id INTEGER REFERENCES catalogos_imagenes(id) ON DELETE SET NULL");
+}
+
+// Migración incremental: agrega `monto` (premio fijo en Bs por figura) a
+// `sorteo_patrones` si la tabla ya existía de una versión anterior sin esa
+// columna (antes solo se soportaba porcentaje del premio acumulado).
+const sorteoPatronesInfo = db.prepare("PRAGMA table_info(sorteo_patrones)").all();
+if (!sorteoPatronesInfo.some((c) => c.name === 'monto')) {
+  db.exec("ALTER TABLE sorteo_patrones ADD COLUMN monto REAL");
+}
+// Migración incremental: `cerrada` marca que una figura ya no acepta más
+// ganadores (el admin la cierra a mano tras juntar todos los bingos
+// simultáneos de esa figura). Antes, una figura se consideraba "cerrada" en
+// cuanto tenía UN ganador, lo que impedía validar 2+ bingos legítimos de la
+// misma figura — ahora eso lo decide el admin explícitamente.
+if (!sorteoPatronesInfo.some((c) => c.name === 'cerrada')) {
+  db.exec("ALTER TABLE sorteo_patrones ADD COLUMN cerrada INTEGER NOT NULL DEFAULT 0");
+}
+
+// Migración incremental: agrega `letra` (A/B/C/D dentro de su carta/combo) a
+// `cartones` si la tabla ya existía de una versión anterior sin esa columna.
+const cartonesInfo = db.prepare("PRAGMA table_info(cartones)").all();
+if (!cartonesInfo.some((c) => c.name === 'letra')) {
+  db.exec("ALTER TABLE cartones ADD COLUMN letra TEXT");
+}
+
+// Backfill: sorteos creados antes de soportar múltiples figuras no tienen
+// filas en sorteo_patrones. Se les asigna su única figura original al 100%.
+const sorteosSinFiguras = db
+  .prepare(`SELECT id, patron FROM sorteos WHERE id NOT IN (SELECT DISTINCT sorteo_id FROM sorteo_patrones)`)
+  .all();
+if (sorteosSinFiguras.length) {
+  const insertFigura = db.prepare(
+    `INSERT INTO sorteo_patrones (sorteo_id, patron, porcentaje, orden) VALUES (?, ?, 100, 0)`
+  );
+  const tx = db.transaction((rows) => rows.forEach((s) => insertFigura.run(s.id, s.patron)));
+  tx(sorteosSinFiguras);
+}
+
+// Seed admin por defecto si no existe ningún usuario
+const userCount = db.prepare('SELECT COUNT(*) c FROM users').get().c;
+if (userCount === 0) {
+  const hash = bcrypt.hashSync('admin123', 10);
+  db.prepare(`INSERT INTO users (username, password, role) VALUES (?, ?, 'admin')`).run('admin', hash);
+  console.log('Usuario admin creado -> usuario: admin / clave: admin123');
+}
+
+// Seed de configuración por defecto (link del grupo de WhatsApp, editable
+// luego por el admin desde el panel de Configuración).
+const whatsappSetting = db.prepare("SELECT value FROM settings WHERE key = 'whatsapp_link'").get();
+if (!whatsappSetting) {
+  db.prepare("INSERT INTO settings (key, value) VALUES ('whatsapp_link', '')").run();
+}
+
+module.exports = db;

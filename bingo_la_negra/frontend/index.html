@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bingo la Negra</title>
+<script>
+  (function () {
+    var saved = localStorage.getItem('bingo_theme');
+    var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bingonight: '#071a0d',
+          bingoindigo: '#14532d',
+          bingopurple: '#4d7c0f',
+          bingoviolet: '#65a30d',
+          bingoaccent: '#a3e635',
+          rose: {
+            100: '#dcfce7',
+            200: '#bbf7d0',
+            300: '#86efac',
+            400: '#4ade80',
+            500: '#22c55e',
+          },
+          pink: {
+            300: '#a3e635',
+          },
+        },
+        boxShadow: {
+          glow: '0 0 25px rgba(163,230,53,0.35)',
+        },
+      },
+    },
+  };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  body { background: radial-gradient(ellipse at top, #14532d 0%, #071a0d 55%, #020805 100%); }
+  ::-webkit-scrollbar { height: 8px; width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #65a30d; border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  .bingo-ball { box-shadow: 0 0 30px rgba(163,230,53,0.6), inset 0 -6px 10px rgba(0,0,0,0.35); }
+  @keyframes pop { 0% { transform: scale(0.4); opacity:0; } 100% { transform: scale(1); opacity:1; } }
+  .pop-in { animation: pop 0.25s ease-out; }
+  @keyframes blinkCarton {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(245,158,11,0.9), 0 0 18px rgba(245,158,11,0.6); }
+    50% { box-shadow: 0 0 0 2px rgba(245,158,11,0.2), 0 0 4px rgba(245,158,11,0.1); }
+  }
+  .carton-cerca { animation: blinkCarton 1s ease-in-out infinite; }
+  @keyframes pulseCelda {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(245,158,11,1), 0 0 14px rgba(245,158,11,0.9); transform: scale(1); }
+    50% { box-shadow: 0 0 0 3px rgba(245,158,11,0.5), 0 0 24px rgba(245,158,11,0.5); transform: scale(1.08); }
+  }
+  .celda-cerca { animation: pulseCelda 0.7s ease-in-out infinite; position: relative; z-index: 1; }
+
+  /* Crédito "Desarrollado por" del login — antes gris casi invisible, ahora
+     con brillo neón animado para que resalte. */
+  @keyframes creditoNeonPulse {
+    0%, 100% {
+      text-shadow: 0 0 4px currentColor, 0 0 10px currentColor, 0 0 18px currentColor, 0 0 32px #22d3ee;
+    }
+    50% {
+      text-shadow: 0 0 8px currentColor, 0 0 16px currentColor, 0 0 28px currentColor, 0 0 44px #22d3ee;
+    }
+  }
+  .credito-neon {
+    color: #22d3ee;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    animation: creditoNeonPulse 2.2s ease-in-out infinite;
+  }
+  .credito-neon a {
+    color: #f472b6;
+    text-decoration: none;
+    border-bottom: 1px dashed rgba(244,114,182,0.7);
+    transition: color 0.15s ease;
+  }
+  .credito-neon a:hover {
+    color: #fb7185;
+  }
+  :root[data-theme="light"] .credito-neon {
+    color: #0891b2;
+  }
+  :root[data-theme="light"] .credito-neon a {
+    color: #db2777;
+  }
+
+  /* =========================================================
+     Tema claro — overrides sobre las clases de Tailwind CDN.
+     Se activan con [data-theme="light"] en <html> (ver ThemeToggle
+     en app.js). Todo el resto del CSS de arriba/Tailwind es el
+     tema oscuro por defecto.
+     ========================================================= */
+  :root[data-theme="light"] body {
+    background: radial-gradient(ellipse at top, #e7f5e0 0%, #f8fafc 55%, #ffffff 100%) !important;
+  }
+  :root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #65a30d !important; }
+
+  /* Superficies (tarjetas/paneles) */
+  :root[data-theme="light"] .bg-slate-900\/60 { background-color: rgba(255,255,255,0.85) !important; }
+  :root[data-theme="light"] .bg-slate-900\/80 { background-color: rgba(226,232,240,0.6) !important; }
+  :root[data-theme="light"] .bg-slate-900 { background-color: #ffffff !important; }
+  :root[data-theme="light"] .bg-slate-800\/70 { background-color: rgba(255,255,255,0.92) !important; }
+  :root[data-theme="light"] .bg-slate-800\/60 { background-color: rgba(230,245,224,0.7) !important; }
+  :root[data-theme="light"] .bg-slate-800\/40 { background-color: rgba(230,245,224,0.5) !important; }
+  :root[data-theme="light"] .bg-slate-800\/30 { background-color: rgba(230,245,224,0.35) !important; }
+  :root[data-theme="light"] .bg-slate-800 { background-color: #ffffff !important; }
+  :root[data-theme="light"] .bg-slate-700\/60 { background-color: rgba(226,232,240,0.7) !important; }
+  :root[data-theme="light"] .bg-slate-700 { background-color: #e2e8f0 !important; }
+  :root[data-theme="light"] .bg-slate-600\/20 { background-color: rgba(100,116,139,0.15) !important; }
+  :root[data-theme="light"] .bg-slate-950\/60 { background-color: rgba(255,255,255,0.85) !important; }
+  :root[data-theme="light"] .bg-slate-950\/50 { background-color: rgba(255,255,255,0.75) !important; }
+  :root[data-theme="light"] .bg-slate-950\/40 { background-color: rgba(255,255,255,0.65) !important; }
+  :root[data-theme="light"] .hover\:bg-slate-800:hover { background-color: #f0fdf4 !important; }
+  :root[data-theme="light"] .hover\:bg-slate-800\/60:hover { background-color: rgba(230,245,224,0.8) !important; }
+  :root[data-theme="light"] .hover\:bg-slate-800\/30:hover { background-color: rgba(230,245,224,0.5) !important; }
+  :root[data-theme="light"] .hover\:bg-slate-700:hover { background-color: #bbf7d0 !important; }
+  :root[data-theme="light"] .hover\:text-white:hover { color: #052e16 !important; }
+
+  /* Texto */
+  :root[data-theme="light"] .text-slate-100 { color: #052e16 !important; }
+  :root[data-theme="light"] .text-slate-200 { color: #14532d !important; }
+  :root[data-theme="light"] .text-slate-300 { color: #166534 !important; }
+  :root[data-theme="light"] .text-slate-400 { color: #4d7c0f !important; }
+  :root[data-theme="light"] .text-slate-500 { color: #65a30d !important; }
+  :root[data-theme="light"] .text-slate-600 { color: #86efac !important; }
+  :root[data-theme="light"] .placeholder-slate-500::placeholder { color: #bbf7d0 !important; }
+
+  /* Bordes */
+  :root[data-theme="light"] .border-slate-800 { border-color: #bbf7d0 !important; }
+  :root[data-theme="light"] .border-slate-800\/60 { border-color: rgba(187,247,208,0.8) !important; }
+  :root[data-theme="light"] .border-slate-700 { border-color: #86efac !important; }
+  :root[data-theme="light"] .border-slate-600 { border-color: #4ade80 !important; }
+  :root[data-theme="light"] .border-slate-500\/40 { border-color: rgba(100,116,139,0.35) !important; }
+
+  /* Acentos verdes (titulos/etiquetas) */
+  :root[data-theme="light"] .text-rose-100 { color: #14532d !important; }
+  :root[data-theme="light"] .text-rose-200 { color: #166534 !important; }
+  :root[data-theme="light"] .text-rose-300 { color: #16a34a !important; }
+  :root[data-theme="light"] .text-rose-400 { color: #22c55e !important; }
+  :root[data-theme="light"] .text-violet-300 { color: #7c3aed !important; }
+  :root[data-theme="light"] .from-rose-300 { --tw-gradient-from: #16a34a !important; }
+  :root[data-theme="light"] .to-pink-300 { --tw-gradient-to: #15803d !important; }
+
+  /* Tonos de badges/encabezados de cartón sobre fondo tintado */
+  :root[data-theme="light"] .text-emerald-300 { color: #047857 !important; }
+  :root[data-theme="light"] .text-emerald-400 { color: #059669 !important; }
+  :root[data-theme="light"] .text-amber-300 { color: #b45309 !important; }
+  :root[data-theme="light"] .text-amber-400 { color: #b45309 !important; }
+  :root[data-theme="light"] .text-red-300 { color: #b91c1c !important; }
+  :root[data-theme="light"] .text-red-400 { color: #dc2626 !important; }
+  :root[data-theme="light"] .text-sky-300 { color: #0369a1 !important; }
+  :root[data-theme="light"] .text-orange-300 { color: #c2410c !important; }
+</style>
+</head>
+<body class="min-h-screen text-slate-100">
+<div id="root"></div>
+<!--
+  Configura aquí la URL del backend si no corre en localhost:4000
+  Ejemplo: window.BINGO_API_BASE = 'https://mi-servidor.com/api';
+-->
+<script>window.BINGO_API_BASE = window.BINGO_API_BASE || (location.origin + '/api');</script>
+<script type="text/babel" data-presets="react" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+node_modules/
+backend/node_modules/
+backend/.env
+backend/bingo.db
+backend/bingo.db-journal
+backend/bingo.db-wal
+backend/bingo.db-shm
+backend/uploads/comprobantes/*
+!backend/uploads/comprobantes/.gitkeep
+backend/uploads/logo/*
+!backend/uploads/logo/.gitkeep
+backend/bin/
+.DS_Store

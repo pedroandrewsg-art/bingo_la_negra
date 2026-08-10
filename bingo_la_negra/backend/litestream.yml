@@ -1,0 +1,14 @@
+# litestream.yml — Replicación continua de bingo.db hacia Cloudflare R2.
+# Permite correr en el plan free de Render (sin Disk persistente): al
+# arrancar, se restaura el último snapshot desde R2; mientras corre, cada
+# cambio se replica en segundo plano.
+dbs:
+  - path: ./bingo.db
+    replicas:
+      - type: s3
+        bucket: ${R2_BUCKET}
+        path: litestream/bingo.db
+        endpoint: ${R2_ENDPOINT}
+        region: auto
+        access-key-id: ${R2_ACCESS_KEY_ID}
+        secret-access-key: ${R2_SECRET_ACCESS_KEY}
