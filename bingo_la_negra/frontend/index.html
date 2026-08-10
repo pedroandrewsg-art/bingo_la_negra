@@ -17,24 +17,24 @@
     theme: {
       extend: {
         colors: {
-          bingonight: '#071a0d',
-          bingoindigo: '#14532d',
-          bingopurple: '#4d7c0f',
-          bingoviolet: '#65a30d',
-          bingoaccent: '#a3e635',
+          bingonight: '#0a1f14',
+          bingoindigo: '#166534',
+          bingopurple: '#4ade80',
+          bingoviolet: '#86efac',
+          bingoaccent: '#bbf7d0',
           rose: {
-            100: '#dcfce7',
-            200: '#bbf7d0',
-            300: '#86efac',
-            400: '#4ade80',
-            500: '#22c55e',
+            100: '#f0fdf4',
+            200: '#dcfce7',
+            300: '#4ade80',
+            400: '#22c55e',
+            500: '#16a34a',
           },
           pink: {
-            300: '#a3e635',
+            300: '#bbf7d0',
           },
         },
         boxShadow: {
-          glow: '0 0 25px rgba(163,230,53,0.35)',
+          glow: '0 0 25px rgba(187,247,208,0.35)',
         },
       },
     },
@@ -45,11 +45,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 <style>
-  body { background: radial-gradient(ellipse at top, #14532d 0%, #071a0d 55%, #020805 100%); }
+  body { background: radial-gradient(ellipse at top, #166534 0%, #0a1f14 55%, #051009 100%); }
   ::-webkit-scrollbar { height: 8px; width: 8px; }
-  ::-webkit-scrollbar-thumb { background: #65a30d; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb { background: #4ade80; border-radius: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  .bingo-ball { box-shadow: 0 0 30px rgba(163,230,53,0.6), inset 0 -6px 10px rgba(0,0,0,0.35); }
+  .bingo-ball { box-shadow: 0 0 30px rgba(187,247,208,0.6), inset 0 -6px 10px rgba(0,0,0,0.35); }
   @keyframes pop { 0% { transform: scale(0.4); opacity:0; } 100% { transform: scale(1); opacity:1; } }
   .pop-in { animation: pop 0.25s ease-out; }
   @keyframes blinkCarton {
@@ -80,19 +80,19 @@
     animation: creditoNeonPulse 2.2s ease-in-out infinite;
   }
   .credito-neon a {
-    color: #f472b6;
+    color: #4ade80;
     text-decoration: none;
-    border-bottom: 1px dashed rgba(244,114,182,0.7);
+    border-bottom: 1px dashed rgba(74,222,128,0.7);
     transition: color 0.15s ease;
   }
   .credito-neon a:hover {
-    color: #fb7185;
+    color: #86efac;
   }
   :root[data-theme="light"] .credito-neon {
     color: #0891b2;
   }
   :root[data-theme="light"] .credito-neon a {
-    color: #db2777;
+    color: #16a34a;
   }
 
   /* =========================================================
@@ -102,18 +102,18 @@
      tema oscuro por defecto.
      ========================================================= */
   :root[data-theme="light"] body {
-    background: radial-gradient(ellipse at top, #e7f5e0 0%, #f8fafc 55%, #ffffff 100%) !important;
+    background: radial-gradient(ellipse at top, #dcfce7 0%, #f8fafc 55%, #ffffff 100%) !important;
   }
-  :root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #65a30d !important; }
+  :root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #16a34a !important; }
 
   /* Superficies (tarjetas/paneles) */
   :root[data-theme="light"] .bg-slate-900\/60 { background-color: rgba(255,255,255,0.85) !important; }
   :root[data-theme="light"] .bg-slate-900\/80 { background-color: rgba(226,232,240,0.6) !important; }
   :root[data-theme="light"] .bg-slate-900 { background-color: #ffffff !important; }
   :root[data-theme="light"] .bg-slate-800\/70 { background-color: rgba(255,255,255,0.92) !important; }
-  :root[data-theme="light"] .bg-slate-800\/60 { background-color: rgba(230,245,224,0.7) !important; }
-  :root[data-theme="light"] .bg-slate-800\/40 { background-color: rgba(230,245,224,0.5) !important; }
-  :root[data-theme="light"] .bg-slate-800\/30 { background-color: rgba(230,245,224,0.35) !important; }
+  :root[data-theme="light"] .bg-slate-800\/60 { background-color: rgba(240,253,244,0.7) !important; }
+  :root[data-theme="light"] .bg-slate-800\/40 { background-color: rgba(240,253,244,0.5) !important; }
+  :root[data-theme="light"] .bg-slate-800\/30 { background-color: rgba(240,253,244,0.35) !important; }
   :root[data-theme="light"] .bg-slate-800 { background-color: #ffffff !important; }
   :root[data-theme="light"] .bg-slate-700\/60 { background-color: rgba(226,232,240,0.7) !important; }
   :root[data-theme="light"] .bg-slate-700 { background-color: #e2e8f0 !important; }
@@ -122,35 +122,35 @@
   :root[data-theme="light"] .bg-slate-950\/50 { background-color: rgba(255,255,255,0.75) !important; }
   :root[data-theme="light"] .bg-slate-950\/40 { background-color: rgba(255,255,255,0.65) !important; }
   :root[data-theme="light"] .hover\:bg-slate-800:hover { background-color: #f0fdf4 !important; }
-  :root[data-theme="light"] .hover\:bg-slate-800\/60:hover { background-color: rgba(230,245,224,0.8) !important; }
-  :root[data-theme="light"] .hover\:bg-slate-800\/30:hover { background-color: rgba(230,245,224,0.5) !important; }
-  :root[data-theme="light"] .hover\:bg-slate-700:hover { background-color: #bbf7d0 !important; }
+  :root[data-theme="light"] .hover\:bg-slate-800\/60:hover { background-color: rgba(240,253,244,0.8) !important; }
+  :root[data-theme="light"] .hover\:bg-slate-800\/30:hover { background-color: rgba(240,253,244,0.5) !important; }
+  :root[data-theme="light"] .hover\:bg-slate-700:hover { background-color: #dcfce7 !important; }
   :root[data-theme="light"] .hover\:text-white:hover { color: #052e16 !important; }
 
   /* Texto */
   :root[data-theme="light"] .text-slate-100 { color: #052e16 !important; }
-  :root[data-theme="light"] .text-slate-200 { color: #14532d !important; }
-  :root[data-theme="light"] .text-slate-300 { color: #166534 !important; }
-  :root[data-theme="light"] .text-slate-400 { color: #4d7c0f !important; }
-  :root[data-theme="light"] .text-slate-500 { color: #65a30d !important; }
-  :root[data-theme="light"] .text-slate-600 { color: #86efac !important; }
-  :root[data-theme="light"] .placeholder-slate-500::placeholder { color: #bbf7d0 !important; }
+  :root[data-theme="light"] .text-slate-200 { color: #166534 !important; }
+  :root[data-theme="light"] .text-slate-300 { color: #15803d !important; }
+  :root[data-theme="light"] .text-slate-400 { color: #16a34a !important; }
+  :root[data-theme="light"] .text-slate-500 { color: #22c55e !important; }
+  :root[data-theme="light"] .text-slate-600 { color: #4ade80 !important; }
+  :root[data-theme="light"] .placeholder-slate-500::placeholder { color: #dcfce7 !important; }
 
   /* Bordes */
-  :root[data-theme="light"] .border-slate-800 { border-color: #bbf7d0 !important; }
-  :root[data-theme="light"] .border-slate-800\/60 { border-color: rgba(187,247,208,0.8) !important; }
-  :root[data-theme="light"] .border-slate-700 { border-color: #86efac !important; }
-  :root[data-theme="light"] .border-slate-600 { border-color: #4ade80 !important; }
+  :root[data-theme="light"] .border-slate-800 { border-color: #dcfce7 !important; }
+  :root[data-theme="light"] .border-slate-800\/60 { border-color: rgba(220,252,231,0.8) !important; }
+  :root[data-theme="light"] .border-slate-700 { border-color: #bbf7d0 !important; }
+  :root[data-theme="light"] .border-slate-600 { border-color: #86efac !important; }
   :root[data-theme="light"] .border-slate-500\/40 { border-color: rgba(100,116,139,0.35) !important; }
 
   /* Acentos verdes (titulos/etiquetas) */
-  :root[data-theme="light"] .text-rose-100 { color: #14532d !important; }
-  :root[data-theme="light"] .text-rose-200 { color: #166534 !important; }
+  :root[data-theme="light"] .text-rose-100 { color: #166534 !important; }
+  :root[data-theme="light"] .text-rose-200 { color: #15803d !important; }
   :root[data-theme="light"] .text-rose-300 { color: #16a34a !important; }
   :root[data-theme="light"] .text-rose-400 { color: #22c55e !important; }
   :root[data-theme="light"] .text-violet-300 { color: #7c3aed !important; }
   :root[data-theme="light"] .from-rose-300 { --tw-gradient-from: #16a34a !important; }
-  :root[data-theme="light"] .to-pink-300 { --tw-gradient-to: #15803d !important; }
+  :root[data-theme="light"] .to-pink-300 { --tw-gradient-to: #22c55e !important; }
 
   /* Tonos de badges/encabezados de cartón sobre fondo tintado */
   :root[data-theme="light"] .text-emerald-300 { color: #047857 !important; }
