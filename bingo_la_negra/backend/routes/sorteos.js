@@ -552,7 +552,7 @@ router.get('/:id/lista-texto', requireAuth, requireAdmin, (req, res) => {
     .map((g) => {
       const num = etiquetaConjuntoEmoji(g);
       if (g.disponible) return num;
-      const marca = g.pagado ? ` ${cfg.pagado_emoji}` : ' ⏳';
+      const marca = g.pagado ? ` ${cfg.pagado_emoji}` : ` ${cfg.pendiente_emoji}`;
       return `${num} ${g.nombre || ''}${marca}`;
     })
     .join('\n');
@@ -570,7 +570,7 @@ router.get('/:id/pendientes-texto', requireAuth, requireAdmin, (req, res) => {
   let texto = `${cfg.pendientes_encabezado}\n\n`;
   if (total) texto += `*Pendientes por pagar: ${total} cartones:*\n\n`;
   texto += total
-    ? conjuntos.map((g) => `${etiquetaConjuntoEmoji(g)} ${(g.nombre || 'N/A').toUpperCase()} ⏳`).join('\n')
+    ? conjuntos.map((g) => `${etiquetaConjuntoEmoji(g)} ${(g.nombre || 'N/A').toUpperCase()} ${cfg.pendiente_emoji}`).join('\n')
     : 'No hay cartones pendientes de pago.';
   if (total) texto += `\n\n${cfg.pendientes_pie}`;
   res.json({ texto: texto.trim() });

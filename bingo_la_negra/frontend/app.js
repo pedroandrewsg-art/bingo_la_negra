@@ -2596,7 +2596,7 @@ function WhatsappLivePanel({ sorteoId }) {
     const linea = (g) => {
       const num = g.etiquetaEmoji;
       if (g.disponible) return num;
-      const marca = g.pagado ? ` ${config.pagado_emoji}` : ' ⏳';
+      const marca = g.pagado ? ` ${config.pagado_emoji}` : ` ${config.pendiente_emoji}`;
       return `${num} ${g.nombre || ''}${marca}`;
     };
     const cuerpo = conjuntos.map(linea).join('\n');
@@ -2621,7 +2621,7 @@ function WhatsappLivePanel({ sorteoId }) {
     if (!config) return '';
     const pendientes = conjuntos.filter((g) => !g.disponible && !g.pagado);
     const total = pendientes.length;
-    const linea = (g) => `${g.etiquetaEmoji} ${(g.nombre || 'N/A').toUpperCase()} ⏳`;
+    const linea = (g) => `${g.etiquetaEmoji} ${(g.nombre || 'N/A').toUpperCase()} ${config.pendiente_emoji}`;
     let texto = `${config.pendientes_encabezado}\n\n`;
     if (total) texto += `*Pendientes por pagar: ${total} cartones:*\n\n`;
     texto += total ? pendientes.map(linea).join('\n') : 'No hay cartones pendientes de pago.';
@@ -2681,7 +2681,7 @@ function WhatsappLivePanel({ sorteoId }) {
                         {g.pagado ? (
                           <span className="text-emerald-600 text-xs">{config.pagado_emoji} Pagado</span>
                         ) : (
-                          <span className="text-amber-600 text-xs">⏳ Pendiente</span>
+                          <span className="text-amber-600 text-xs">{config.pendiente_emoji} Pendiente</span>
                         )}
                       </span>
                     </div>
@@ -2735,9 +2735,15 @@ function WhatsappLivePanel({ sorteoId }) {
                 <textarea rows={2} value={config.pendientes_pie} onChange={(e) => setCampo('pendientes_pie', e.target.value)} className={textareaClass} />
               </div>
             </div>
-            <div className="max-w-[160px]">
-              <Label>Emoji — Pagado</Label>
-              <Input value={config.pagado_emoji} onChange={(e) => setCampo('pagado_emoji', e.target.value)} />
+            <div className="grid grid-cols-2 gap-3 max-w-[340px]">
+              <div>
+                <Label>Emoji — Pagado</Label>
+                <Input value={config.pagado_emoji} onChange={(e) => setCampo('pagado_emoji', e.target.value)} />
+              </div>
+              <div>
+                <Label>Emoji — Pendiente</Label>
+                <Input value={config.pendiente_emoji} onChange={(e) => setCampo('pendiente_emoji', e.target.value)} />
+              </div>
             </div>
             {msg && <div className={`text-sm ${msg.startsWith('✅') ? 'text-emerald-400' : 'text-red-400'}`}>{msg}</div>}
             <Button disabled={guardando} onClick={guardarConfig}>{guardando ? 'Guardando...' : 'Guardar configuración'}</Button>

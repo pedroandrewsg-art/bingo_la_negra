@@ -14,4 +14,5 @@ module.exports = {
   pendientes_encabezado: '⚠️ *CARTONES PENDIENTES DE PAGO* ⚠️',
   pendientes_pie: '*Por favor confirma tu pago para validar tu cartón* 📩',
   pagado_emoji: '⭐',
+  pendiente_emoji: '⏳',
 };
