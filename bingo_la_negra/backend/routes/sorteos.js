@@ -4,6 +4,7 @@ const db = require('../db');
 const { requireAuth, requireAdmin } = require('../authMiddleware');
 const { obtenerPlantillas } = require('../plantillas');
 const { listPatterns, checkPattern } = require('../patterns');
+const WHATSAPP_LIVE_DEFAULTS = require('../whatsappLiveDefaults');
 
 const router = express.Router();
 
@@ -17,6 +18,17 @@ function getSetting(key) {
 function setSetting(key, value) {
   const info = db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(value, key);
   if (!info.changes) db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(key, value);
+}
+
+// Textos/emoji configurables del módulo "WhatsApp Live" (ver whatsappLiveDefaults.js).
+// Sin `|| DEFAULT` a propósito: db.js ya siembra estas claves al arrancar, así
+// que la fila siempre existe — pero un admin puede guardar un valor vacío
+// intencionalmente (ej. "no quiero pie de página"), y '' también es falsy en
+// JS, así que `|| DEFAULT` repondría el default cada vez que alguien lo borra.
+function getWhatsappLiveSettings() {
+  const out = {};
+  Object.keys(WHATSAPP_LIVE_DEFAULTS).forEach((k) => { out[k] = getSetting(k); });
+  return out;
 }
 
 const EMOJI_DIGITS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
@@ -518,11 +530,15 @@ router.get('/:id/vendidos-texto', requireAuth, requireAdmin, (req, res) => {
 router.get('/:id/disponibles-texto', requireAuth, requireAdmin, (req, res) => {
   const sorteo = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(req.params.id);
   if (!sorteo) return res.status(404).json({ error: 'No encontrado' });
+  const cfg = getWhatsappLiveSettings();
   const conjuntos = agruparPorConjunto(cartonesConDueno(req.params.id)).filter((g) => g.disponible);
-  let text = `🎰 *CARTONES DISPONIBLES — ${sorteo.color.toUpperCase()}* 🎰\n\n`;
-  text += conjuntos.length ? conjuntos.map((g) => etiquetaConjuntoEmoji(g)).join('\n') : 'No quedan cartones disponibles.';
-  if (conjuntos.length) text += '\n\n*¡Pide el tuyo antes que se agoten!* 💚';
-  res.json({ texto: text });
+  const total = conjuntos.length;
+  const encabezado = cfg.disponibles_encabezado.replace(/\{color\}/gi, sorteo.color.toUpperCase());
+  let text = `${encabezado}\n\n`;
+  if (total) text += `*Quedan ${total} cartones libres:*\n\n`;
+  text += total ? conjuntos.map((g) => etiquetaConjuntoEmoji(g)).join('\n') : 'No quedan cartones disponibles.';
+  if (total) text += `\n\n${cfg.disponibles_pie}`;
+  res.json({ texto: text.trim() });
 });
 
 // Lista completa (disponibles + apartados + pagados) con encabezado/pie configurables,
@@ -530,12 +546,13 @@ router.get('/:id/disponibles-texto', requireAuth, requireAdmin, (req, res) => {
 router.get('/:id/lista-texto', requireAuth, requireAdmin, (req, res) => {
   const sorteo = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(req.params.id);
   if (!sorteo) return res.status(404).json({ error: 'No encontrado' });
+  const cfg = getWhatsappLiveSettings();
   const conjuntos = agruparPorConjunto(cartonesConDueno(req.params.id));
   const cuerpo = conjuntos
     .map((g) => {
       const num = etiquetaConjuntoEmoji(g);
       if (g.disponible) return num;
-      const marca = g.pagado ? ' ⭐' : '';
+      const marca = g.pagado ? ` ${cfg.pagado_emoji}` : ' ⏳';
       return `${num} ${g.nombre || ''}${marca}`;
     })
     .join('\n');
@@ -547,13 +564,43 @@ router.get('/:id/lista-texto', requireAuth, requireAdmin, (req, res) => {
 router.get('/:id/pendientes-texto', requireAuth, requireAdmin, (req, res) => {
   const sorteo = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(req.params.id);
   if (!sorteo) return res.status(404).json({ error: 'No encontrado' });
+  const cfg = getWhatsappLiveSettings();
   const conjuntos = agruparPorConjunto(cartonesConDueno(req.params.id)).filter((g) => !g.disponible && !g.pagado);
-  let texto = '⚠️ *CARTONES PENDIENTES DE PAGO* ⚠️\n\n';
-  texto += conjuntos.length
+  const total = conjuntos.length;
+  let texto = `${cfg.pendientes_encabezado}\n\n`;
+  if (total) texto += `*Pendientes por pagar: ${total} cartones:*\n\n`;
+  texto += total
     ? conjuntos.map((g) => `${etiquetaConjuntoEmoji(g)} ${(g.nombre || 'N/A').toUpperCase()} ⏳`).join('\n')
     : 'No hay cartones pendientes de pago.';
-  if (conjuntos.length) texto += '\n\n*Por favor confirma tu pago para validar tu cartón* 📩';
-  res.json({ texto });
+  if (total) texto += `\n\n${cfg.pendientes_pie}`;
+  res.json({ texto: texto.trim() });
+});
+
+// Datos crudos (sin formatear a texto) para armar la vista previa "WhatsApp
+// Live" en el frontend — evita reimplementar acá numeroAEmojis/agrupación;
+// el armado final (encabezado/pie/emoji configurables) se hace en el cliente,
+// mirror de las rutas *-texto de arriba (mantener ambos lados en sync).
+router.get('/:id/whatsapp-live-datos', requireAuth, requireAdmin, (req, res) => {
+  const sorteo = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(req.params.id);
+  if (!sorteo) return res.status(404).json({ error: 'No encontrado' });
+  const conjuntos = agruparPorConjunto(cartonesConDueno(req.params.id)).map((g) => ({
+    grupo: g.grupo,
+    etiquetaEmoji: etiquetaConjuntoEmoji(g),
+    nombre: g.nombre || null,
+    disponible: g.disponible,
+    pagado: g.pagado,
+  }));
+  res.json({
+    sorteo: {
+      id: sorteo.id,
+      color: sorteo.color,
+      fecha_hora: sorteo.fecha_hora,
+      estatus: sorteo.estatus,
+      encabezado: sorteo.encabezado,
+      pie_pagina: sorteo.pie_pagina,
+    },
+    conjuntos,
+  });
 });
 
 // Libera en bloque todos los cartones apartados (vendido) sin pago confirmado

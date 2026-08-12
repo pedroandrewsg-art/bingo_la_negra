@@ -6,6 +6,8 @@ const multer = require('multer');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../authMiddleware');
 const { r2, BUCKET, PutObjectCommand, DeleteObjectCommand } = require('../r2');
+const WHATSAPP_LIVE_DEFAULTS = require('../whatsappLiveDefaults');
+const WHATSAPP_LIVE_KEYS = Object.keys(WHATSAPP_LIVE_DEFAULTS);
 
 const router = express.Router();
 
@@ -42,6 +44,33 @@ router.put('/whatsapp', requireAuth, requireAdmin, (req, res) => {
   if (!link) return res.status(400).json({ error: 'Ponle un link al grupo de WhatsApp' });
   setSetting('whatsapp_link', link);
   res.json({ ok: true, link });
+});
+
+// Textos/emoji configurables del módulo "WhatsApp Live" (encabezado/pie de
+// Disponibles y Pendientes, emoji de Pagado). A diferencia del link de
+// WhatsApp de arriba, acá un valor vacío es válido (un admin puede decidir
+// no tener pie de página), así que solo se valida el tipo. Nota: sin
+// `|| DEFAULT` a propósito — db.js ya siembra estas 5 claves al arrancar (así
+// que la fila siempre existe), y como '' también es falsy en JS, un
+// `|| DEFAULT` acá repondría el default cada vez que un admin lo borra
+// intencionalmente (ver WHATSAPP_LIVE_DEFAULTS solo como valor de siembra, no
+// como respaldo de lectura).
+router.get('/whatsapp-live', requireAuth, (req, res) => {
+  const out = {};
+  WHATSAPP_LIVE_KEYS.forEach((k) => { out[k] = getSetting(k); });
+  res.json(out);
+});
+
+router.put('/whatsapp-live', requireAuth, requireAdmin, (req, res) => {
+  for (const k of WHATSAPP_LIVE_KEYS) {
+    if (req.body[k] !== undefined && typeof req.body[k] !== 'string') {
+      return res.status(400).json({ error: `"${k}" debe ser texto` });
+    }
+  }
+  WHATSAPP_LIVE_KEYS.forEach((k) => { if (req.body[k] !== undefined) setSetting(k, req.body[k]); });
+  const out = {};
+  WHATSAPP_LIVE_KEYS.forEach((k) => { out[k] = getSetting(k); });
+  res.json({ ok: true, ...out });
 });
 
 router.post('/logo', requireAuth, requireAdmin, (req, res) => {

@@ -215,6 +215,51 @@ function Spinner() {
   return <div className="flex items-center justify-center py-10"><div className="w-8 h-8 border-4 border-bingopurple border-t-transparent rounded-full animate-spin"></div></div>;
 }
 
+// ---------------------------------------------------------------------------
+// Mockup de WhatsApp — usado por "WhatsApp Live" (WhatsappLivePanel) para
+// previsualizar cómo se ve el mensaje antes de copiarlo. Los colores acá son
+// los de WhatsApp real (fijos), no los del tema de la app — es una vista
+// previa de una app externa, no participa del claro/oscuro de BINGOLANEGRA.
+// ---------------------------------------------------------------------------
+function WhatsappBubbleLinea({ texto }) {
+  const partes = texto.split(/(\*[^*]+\*)/g);
+  return partes.map((p, i) => (p.length > 1 && p.startsWith('*') && p.endsWith('*'))
+    ? <strong key={i}>{p.slice(1, -1)}</strong>
+    : <React.Fragment key={i}>{p}</React.Fragment>);
+}
+
+function WhatsappBubble({ texto }) {
+  if (!texto) return null;
+  const hora = new Date().toLocaleTimeString('es-VE', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return (
+    <div className="max-w-md ml-auto bg-[#dcf8c6] rounded-lg rounded-tr-none shadow px-3 py-2">
+      <div className="whitespace-pre-wrap break-words font-sans text-[13px] text-slate-900 leading-snug">
+        {texto.split('\n').map((linea, i) => <div key={i}>{linea ? <WhatsappBubbleLinea texto={linea} /> : ' '}</div>)}
+      </div>
+      <div className="text-right text-[11px] text-slate-500 mt-1">{hora} <span className="text-sky-500">✔✔</span></div>
+    </div>
+  );
+}
+
+// Encabezado verde tipo "chat" + fondo con textura, para que WhatsappBubble
+// se vea dentro de un marco reconocible como WhatsApp.
+function WhatsappChatFrame({ titulo, subtitulo, children }) {
+  return (
+    <div className="rounded-xl overflow-hidden border border-slate-700">
+      <div className="bg-emerald-700 px-4 py-3 flex items-center gap-2">
+        <div className="w-8 h-8 rounded-full bg-emerald-900/40 flex items-center justify-center text-lg shrink-0">💬</div>
+        <div>
+          <div className="text-white font-semibold text-sm leading-tight">{titulo}</div>
+          <div className="text-emerald-200 text-xs leading-tight">{subtitulo}</div>
+        </div>
+      </div>
+      <div className="p-4" style={{ background: '#e5ddd5' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // Selector de fondo claro/oscuro — solo alterna el atributo data-theme en <html>,
 // el resto del cambio visual lo resuelven los overrides CSS de index.html.
 function ThemeToggle() {
@@ -1349,7 +1394,6 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
   useEffect(() => { apiFetch('/catalogos-imagenes').then((d) => setCatalogos(d.catalogos)); }, []);
   const [cartones, setCartones] = useState([]);
   const [ganadores, setGanadores] = useState([]);
-  const [copiado, setCopiado] = useState('');
   const [conjuntosAbiertos, setConjuntosAbiertos] = useState(new Set());
   // Ganadores ya avisados (por socket o por sondeo/reconexión), para no
   // repetir el mismo aviso dos veces. null = todavía no se cargó la primera
@@ -1364,14 +1408,10 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
     });
   }
 
-  const [encabezado, setEncabezado] = useState('');
-  const [piePagina, setPiePagina] = useState('');
-  const [listaTexto, setListaTexto] = useState('');
   const [numerosInput, setNumerosInput] = useState('');
   const [accionMsg, setAccionMsg] = useState('');
   const [asignarNombre, setAsignarNombre] = useState('');
   const [asignarNumerosInput, setAsignarNumerosInput] = useState('');
-  const guardarTimer = useRef(null);
 
   // Edición de figuras (agregar/quitar/cambiar % o monto) y de rango
   // (ampliar o reducir cuántas cartas hay a la venta) de un sorteo ya creado.
@@ -1462,8 +1502,6 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
   function loadAll() {
     apiFetch('/sorteos/' + sorteoId).then((d) => {
       setSorteo(d.sorteo);
-      setEncabezado(d.sorteo.encabezado || '');
-      setPiePagina(d.sorteo.pie_pagina || '');
       // Respaldo ante desconexiones de WebSocket: si el evento 'bingo-ganador'
       // se perdió, cualquier ganador que aparezca acá y no hayamos registrado
       // todavía se agrega igual al banner. Se rastrea por ganadorId (no por
@@ -1489,11 +1527,6 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
       }
     });
     apiFetch('/cartones?sorteo_id=' + sorteoId).then((d) => setCartones(d.cartones.filter((c) => c.estado !== 'disponible')));
-    loadListaTexto();
-  }
-
-  function loadListaTexto() {
-    apiFetch(`/sorteos/${sorteoId}/lista-texto`).then((d) => setListaTexto(d.texto));
   }
 
   useEffect(() => {
@@ -1529,7 +1562,6 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
     // "conectado" — refresca todo apenas la página vuelve a ser visible.
     const onVisible = () => { if (document.visibilityState === 'visible') loadAll(); };
     document.addEventListener('visibilitychange', onVisible);
-    const interval = setInterval(loadListaTexto, 5000);
     return () => {
       socket.emit('leave-sorteo', { sorteoId });
       socket.off('bingo-ganador', onGanador);
@@ -1538,24 +1570,8 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
       socket.off('cartones-actualizados', onOtro);
       socket.off('connect', loadAll);
       document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(interval);
     };
   }, [sorteoId]);
-
-  async function copiar(tipo) {
-    const d = await apiFetch(`/sorteos/${sorteoId}/${tipo}-texto`);
-    await navigator.clipboard.writeText(d.texto);
-    setCopiado(tipo);
-    setTimeout(() => setCopiado(''), 1500);
-  }
-
-  function guardarEncabezadoPie(next) {
-    clearTimeout(guardarTimer.current);
-    guardarTimer.current = setTimeout(async () => {
-      await apiFetch('/sorteos/' + sorteoId, { method: 'PUT', body: JSON.stringify(next) });
-      loadListaTexto();
-    }, 800);
-  }
 
   function parseNumeros() {
     return numerosInput.split(/[\s,]+/).map((n) => parseInt(n, 10)).filter((n) => !Number.isNaN(n));
@@ -1640,11 +1656,6 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={onClose}>&larr; Volver a Sorteos</Button>
-        <div className="flex gap-2 flex-wrap justify-end">
-          <Button variant="ghost" onClick={() => copiar('lista')}>{copiado === 'lista' ? '✅ Copiado' : '📋 Copiar Lista Completa'}</Button>
-          <Button variant="ghost" onClick={() => copiar('disponibles')}>{copiado === 'disponibles' ? '✅ Copiado' : '📋 Copiar Disponibles'}</Button>
-          <Button variant="ghost" onClick={() => copiar('pendientes')}>{copiado === 'pendientes' ? '✅ Copiado' : '📋 Copiar Pendientes'}</Button>
-        </div>
       </div>
 
       <Card>
@@ -1825,29 +1836,6 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
       <Card className="space-y-4">
         <h3 className="font-bold text-rose-100">🧾 Verificación de Ventas</h3>
 
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <Label>Encabezado del mensaje</Label>
-            <textarea
-              rows={2}
-              value={encabezado}
-              onChange={(e) => { setEncabezado(e.target.value); guardarEncabezadoPie({ encabezado: e.target.value, pie_pagina: piePagina }); }}
-              placeholder="Ej: *BINGO MORADO — Hoy 8pm*"
-              className="w-full bg-slate-800/70 border border-slate-700 focus:border-bingoaccent focus:outline-none rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500"
-            />
-          </div>
-          <div>
-            <Label>Pie de página</Label>
-            <textarea
-              rows={2}
-              value={piePagina}
-              onChange={(e) => { setPiePagina(e.target.value); guardarEncabezadoPie({ encabezado, pie_pagina: e.target.value }); }}
-              placeholder="Ej: Pagos por Pago Móvil al 0412-0000000"
-              className="w-full bg-slate-800/70 border border-slate-700 focus:border-bingoaccent focus:outline-none rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500"
-            />
-          </div>
-        </div>
-
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex-1 min-w-[200px]">
             <Label>Números de Carta (separados por espacio o coma)</Label>
@@ -1870,22 +1858,9 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
           <Button onClick={asignarCarton} disabled={!asignarNombre.trim() || !asignarNumerosInput.trim()}>📌 Asignar/Apartar</Button>
         </div>
         {accionMsg && <div className="text-sm text-rose-300 bg-rose-500/10 border border-bingopurple/30 rounded-lg px-3 py-2">{accionMsg}</div>}
-
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <Label>Lista Final (para copiar y enviar al grupo)</Label>
-            <Button variant="ghost" className="!py-1 !px-3 text-xs" onClick={() => copiar('lista')}>
-              {copiado === 'lista' ? '✅ Copiado' : '📋 Copiar Lista Completa'}
-            </Button>
-          </div>
-          <textarea
-            readOnly
-            rows={10}
-            value={listaTexto}
-            className="w-full bg-slate-950/60 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono"
-          />
-        </div>
       </Card>
+
+      <WhatsappLivePanel sorteoId={sorteoId} />
 
       <Card>
         <h3 className="font-bold text-rose-100 mb-3">Registro de Cartas Vendidas ({cartonesPorGrupo.size})</h3>
@@ -2522,6 +2497,254 @@ function AdminCatalogos() {
         )}
       </Card>
     </div>
+  );
+}
+
+// Configuración + previsualización en vivo de los mensajes de WhatsApp
+// (Disponibles/Pendientes/Lista completa) armados por sorteos.js. Vive DENTRO
+// del panel de cada sorteo (SorteoDrawPanel), no como sección aparte — junto
+// a la config global (headers/emoji), que también se edita acá mismo. La
+// lista/burbuja quedan siempre visibles — lo único que se minimiza (arranca
+// minimizado) es la tarjeta de Configuración de Textos, que se usa poco y no
+// debe ocuparle pantalla al admin mientras usa el resto del panel.
+//
+// El texto se arma acá mismo, en el cliente (no por round-trip al servidor en
+// cada tecla) para que la burbuja cambie al instante mientras se edita,
+// incluso antes de guardar — por eso textoTodo/textoLibres/textoDeudas son un
+// mirror de lista-texto/disponibles-texto/pendientes-texto en
+// backend/routes/sorteos.js: si se edita el formato de una, hay que editar
+// la otra para que no se desalineen.
+function WhatsappLivePanel({ sorteoId }) {
+  const [configMinimizada, setConfigMinimizada] = useState(true);
+  const [datos, setDatos] = useState(null);
+  const [config, setConfig] = useState(null);
+  const [encabezado, setEncabezado] = useState('');
+  const [piePagina, setPiePagina] = useState('');
+  const [subTab, setSubTab] = useState('todo');
+  const [busqueda, setBusqueda] = useState('');
+  const [copiado, setCopiado] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  // Sin join-sorteo/leave-sorteo acá: SorteoDrawPanel (el padre) ya se
+  // suscribió a la sala de este sorteo — este widget solo escucha en el mismo
+  // socket. La lista/preview están siempre activas mientras el panel del
+  // sorteo esté abierto (no dependen de si la config está minimizada).
+  useEffect(() => {
+    if (!sorteoId) return;
+    setDatos(null);
+    apiFetch('/settings/whatsapp-live').then(setConfig);
+    // Semilla el encabezado/pie del sorteo una sola vez por apertura (no en
+    // cada refresco de los 5s) para no pisar lo que el admin esté escribiendo.
+    let primeraCarga = true;
+    const cargarDatos = () => apiFetch(`/sorteos/${sorteoId}/whatsapp-live-datos`).then((d) => {
+      setDatos(d);
+      if (primeraCarga) {
+        setEncabezado(d.sorteo.encabezado || '');
+        setPiePagina(d.sorteo.pie_pagina || '');
+        primeraCarga = false;
+      }
+    });
+    cargarDatos();
+    const onCambio = (p) => { if (p.sorteoId == sorteoId) cargarDatos(); };
+    socket.on('cartones-actualizados', onCambio);
+    socket.on('cartones-vendidos', onCambio);
+    socket.on('connect', cargarDatos);
+    const onVisible = () => { if (document.visibilityState === 'visible') cargarDatos(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = setInterval(cargarDatos, 5000);
+    return () => {
+      socket.off('cartones-actualizados', onCambio);
+      socket.off('cartones-vendidos', onCambio);
+      socket.off('connect', cargarDatos);
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(interval);
+    };
+  }, [sorteoId]);
+
+  function setCampo(key, value) {
+    setConfig((c) => ({ ...c, [key]: value }));
+  }
+
+  async function guardarConfig() {
+    setGuardando(true);
+    setMsg('');
+    try {
+      const [actualizado] = await Promise.all([
+        apiFetch('/settings/whatsapp-live', { method: 'PUT', body: JSON.stringify(config) }),
+        apiFetch('/sorteos/' + sorteoId, { method: 'PUT', body: JSON.stringify({ encabezado, pie_pagina: piePagina }) }),
+      ]);
+      delete actualizado.ok;
+      setConfig(actualizado);
+      setMsg('✅ Configuración guardada');
+      setTimeout(() => setMsg(''), 2000);
+    } catch (e) { setMsg(e.message); }
+    finally { setGuardando(false); }
+  }
+
+  async function copiarTexto(tab, texto) {
+    await navigator.clipboard.writeText(texto);
+    setCopiado(tab);
+    setTimeout(() => setCopiado(''), 1500);
+  }
+
+  const conjuntos = datos?.conjuntos || [];
+
+  // mirror de lista-texto (backend/routes/sorteos.js) — mantener en sync
+  function textoTodo() {
+    if (!config) return '';
+    const linea = (g) => {
+      const num = g.etiquetaEmoji;
+      if (g.disponible) return num;
+      const marca = g.pagado ? ` ${config.pagado_emoji}` : ' ⏳';
+      return `${num} ${g.nombre || ''}${marca}`;
+    };
+    const cuerpo = conjuntos.map(linea).join('\n');
+    return [encabezado, '', cuerpo, '', piePagina].filter((s) => s !== undefined && s !== null).join('\n').trim();
+  }
+
+  // mirror de disponibles-texto
+  function textoLibres() {
+    if (!config) return '';
+    const disponibles = conjuntos.filter((g) => g.disponible);
+    const total = disponibles.length;
+    const enc = config.disponibles_encabezado.replace(/\{color\}/gi, (datos?.sorteo?.color || '').toUpperCase());
+    let texto = `${enc}\n\n`;
+    if (total) texto += `*Quedan ${total} cartones libres:*\n\n`;
+    texto += total ? disponibles.map((g) => g.etiquetaEmoji).join('\n') : 'No quedan cartones disponibles.';
+    if (total) texto += `\n\n${config.disponibles_pie}`;
+    return texto.trim();
+  }
+
+  // mirror de pendientes-texto
+  function textoDeudas() {
+    if (!config) return '';
+    const pendientes = conjuntos.filter((g) => !g.disponible && !g.pagado);
+    const total = pendientes.length;
+    const linea = (g) => `${g.etiquetaEmoji} ${(g.nombre || 'N/A').toUpperCase()} ⏳`;
+    let texto = `${config.pendientes_encabezado}\n\n`;
+    if (total) texto += `*Pendientes por pagar: ${total} cartones:*\n\n`;
+    texto += total ? pendientes.map(linea).join('\n') : 'No hay cartones pendientes de pago.';
+    if (total) texto += `\n\n${config.pendientes_pie}`;
+    return texto.trim();
+  }
+
+  const totalPendientes = conjuntos.filter((g) => !g.disponible && !g.pagado).length;
+  const resultadosNombres = conjuntos.filter((g) => g.nombre && g.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()));
+  const TABS = [['todo', 'Todo'], ['libres', 'Libres'], ['deudas', 'Deudas'], ['nombres', 'Nombres']];
+  const textareaClass = 'w-full bg-slate-800/70 border border-slate-700 focus:border-bingoaccent focus:outline-none rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500';
+  const textoTabActual = subTab === 'todo' ? textoTodo() : subTab === 'libres' ? textoLibres() : subTab === 'deudas' ? textoDeudas() : '';
+
+  return (
+    <Card className="space-y-3">
+      <h3 className="font-bold text-rose-100">💬 WhatsApp Live</h3>
+
+      <div className="flex gap-2">
+        {TABS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setSubTab(key)}
+            className={`flex-1 text-sm rounded-xl py-2 border transition ${subTab === key ? 'bg-bingopurple/30 border-bingoaccent text-white' : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {(!datos || !config) ? <Spinner /> : (
+        <>
+          {subTab !== 'nombres' && (
+            <div className="flex items-center justify-between gap-2">
+              {subTab === 'deudas'
+                ? <p className="text-xs text-slate-400">Pendientes por pagar: <b>{totalPendientes}</b> cartones</p>
+                : <span />}
+              <Button variant="ghost" className="!py-2 !px-5 text-sm" onClick={() => copiarTexto(subTab, textoTabActual)}>
+                {copiado === subTab ? '✅ Copiado' : '📋 Copiar'}
+              </Button>
+            </div>
+          )}
+
+          <WhatsappChatFrame titulo="Lista de Bingo Virtual" subtitulo="En línea">
+            {subTab === 'nombres' ? (
+              <div className="space-y-2">
+                <Input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar participante..." />
+                <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+                  {busqueda.trim() && resultadosNombres.length === 0 && (
+                    <p className="text-sm text-slate-600 text-center bg-white/70 rounded-lg py-2">Sin resultados.</p>
+                  )}
+                  {resultadosNombres.map((g) => (
+                    <div key={g.grupo} className="flex items-center justify-between gap-2 bg-white/80 rounded-lg px-3 py-1.5 text-sm">
+                      <span className="text-slate-800">{g.nombre}</span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <Badge tone="gray">{g.etiquetaEmoji}</Badge>
+                        {g.pagado ? (
+                          <span className="text-emerald-600 text-xs">{config.pagado_emoji} Pagado</span>
+                        ) : (
+                          <span className="text-amber-600 text-xs">⏳ Pendiente</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <WhatsappBubble texto={textoTabActual} />
+            )}
+          </WhatsappChatFrame>
+        </>
+      )}
+
+      <div className="pt-2 border-t border-slate-700/50">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold text-slate-300">⚙️ Configuración de Textos</h4>
+          <Button variant="ghost" className="!py-1 !px-3 text-xs" onClick={() => setConfigMinimizada((m) => !m)}>
+            {configMinimizada ? '▼ Mostrar' : '▲ Minimizar'}
+          </Button>
+        </div>
+
+        {!configMinimizada && (!config ? <Spinner /> : (
+          <div className="space-y-4 mt-3">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Encabezado — Todo (Lista Completa)</Label>
+                <textarea rows={2} value={encabezado} onChange={(e) => setEncabezado(e.target.value)}
+                  placeholder="Ej: *BINGO MORADO — Hoy 8pm*" className={textareaClass} />
+              </div>
+              <div>
+                <Label>Pie de página — Todo</Label>
+                <textarea rows={2} value={piePagina} onChange={(e) => setPiePagina(e.target.value)}
+                  placeholder="Ej: Pagos por Pago Móvil al 0412-0000000" className={textareaClass} />
+              </div>
+              <div>
+                <Label>Encabezado — Disponibles</Label>
+                <textarea rows={2} value={config.disponibles_encabezado} onChange={(e) => setCampo('disponibles_encabezado', e.target.value)}
+                  placeholder="Ej: 🎰 *CARTONES DISPONIBLES — {color}* 🎰" className={textareaClass} />
+                <p className="text-xs text-slate-500 mt-1">{'Usá {color} para el color del sorteo.'}</p>
+              </div>
+              <div>
+                <Label>Pie de página — Disponibles</Label>
+                <textarea rows={2} value={config.disponibles_pie} onChange={(e) => setCampo('disponibles_pie', e.target.value)} className={textareaClass} />
+              </div>
+              <div>
+                <Label>Encabezado — Pendientes</Label>
+                <textarea rows={2} value={config.pendientes_encabezado} onChange={(e) => setCampo('pendientes_encabezado', e.target.value)} className={textareaClass} />
+              </div>
+              <div>
+                <Label>Pie de página — Pendientes</Label>
+                <textarea rows={2} value={config.pendientes_pie} onChange={(e) => setCampo('pendientes_pie', e.target.value)} className={textareaClass} />
+              </div>
+            </div>
+            <div className="max-w-[160px]">
+              <Label>Emoji — Pagado</Label>
+              <Input value={config.pagado_emoji} onChange={(e) => setCampo('pagado_emoji', e.target.value)} />
+            </div>
+            {msg && <div className={`text-sm ${msg.startsWith('✅') ? 'text-emerald-400' : 'text-red-400'}`}>{msg}</div>}
+            <Button disabled={guardando} onClick={guardarConfig}>{guardando ? 'Guardando...' : 'Guardar configuración'}</Button>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 

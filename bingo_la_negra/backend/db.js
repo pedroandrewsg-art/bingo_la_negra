@@ -3,6 +3,7 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const WHATSAPP_LIVE_DEFAULTS = require('./whatsappLiveDefaults');
 
 // En producción (Render), DATA_DIR debe apuntar al disco persistente montado
 // (ej. /var/data) para que bingo.db sobreviva a reinicios/deploys. Sin esa
@@ -261,5 +262,13 @@ const whatsappSetting = db.prepare("SELECT value FROM settings WHERE key = 'what
 if (!whatsappSetting) {
   db.prepare("INSERT INTO settings (key, value) VALUES ('whatsapp_link', '')").run();
 }
+
+// Seed de los textos/emoji configurables del módulo "WhatsApp Live" — solo si
+// la clave no existe todavía, para no pisar un valor (incluso vacío) que un
+// admin ya haya guardado a propósito.
+const insertSettingSiFalta = db.prepare(
+  'INSERT INTO settings (key, value) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM settings WHERE key = ?)'
+);
+Object.entries(WHATSAPP_LIVE_DEFAULTS).forEach(([key, valor]) => insertSettingSiFalta.run(key, valor, key));
 
 module.exports = db;
