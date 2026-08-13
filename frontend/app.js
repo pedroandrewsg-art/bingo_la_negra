@@ -1323,63 +1323,108 @@ function AdminSorteos() {
       )}
 
       {loading ? <Spinner /> : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-slate-400 border-b border-slate-800">
-                <th className="py-2 pr-3">ID</th>
-                <th className="py-2 pr-3">Fecha</th>
-                <th className="py-2 pr-3">Color</th>
-                <th className="py-2 pr-3">Figura</th>
-                <th className="py-2 pr-3">Venta</th>
-                <th className="py-2 pr-3">Costo</th>
-                <th className="py-2 pr-3">Vendidos</th>
-                <th className="py-2 pr-3">Tu Ganancia</th>
-                <th className="py-2 pr-3">Premio Acum.</th>
-                <th className="py-2 pr-3">Estatus</th>
-                <th className="py-2 pr-3">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorteos.map((s) => {
-                return (
-                  <tr key={s.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
-                    <td className="py-2 pr-3 text-slate-400">#{s.id}</td>
-                    <td className="py-2 pr-3">{s.fecha_hora?.replace('T', ' ')}</td>
-                    <td className="py-2 pr-3"><Badge>{s.color}</Badge></td>
-                    <td className="py-2 pr-3">
-                      <div className="flex flex-col gap-1">
-                        {(s.figuras || []).map((f) => (
-                          <div key={f.patron} className="flex items-center gap-1.5">
-                            <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} />
-                            <span className="text-xs text-slate-400">
-                              {f.label} ({s.modo_premio === 'monto_fijo' ? money(f.monto) : s.modo_premio === 'sin_premio' ? 'sin monto' : `${f.porcentaje}%`}){f.ganada ? ' ✅' : ''}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3">{s.tipo_venta === 1 ? '1 Cartón' : `Combo x${s.tipo_venta}`}</td>
-                    <td className="py-2 pr-3">{money(s.costo)}</td>
-                    <td className="py-2 pr-3">{s.vendidos}/{s.totalCartones}</td>
-                    <td className="py-2 pr-3 text-emerald-400 font-semibold">{money(s.gananciaActual)}</td>
-                    <td className="py-2 pr-3 text-rose-300 font-semibold">{money(s.premioAcumulado)}</td>
-                    <td className="py-2 pr-3">
-                      <Badge tone={s.estatus === 'activo' ? 'green' : s.estatus === 'en_juego' ? 'yellow' : s.estatus === 'pausado' ? 'red' : 'gray'}>{s.estatus}</Badge>
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="flex gap-1">
-                        <Button variant="ghost" onClick={() => setPanelId(s.id)}>🎙️ Panel</Button>
-                        <Button variant="danger" onClick={() => eliminar(s.id)}>🗑️</Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!sorteos.length && <tr><td colSpan="11" className="text-center text-slate-500 py-8">No hay sorteos creados aún.</td></tr>}
-            </tbody>
-          </table>
-        </Card>
+        <>
+          {/* Tabla completa — solo en pantallas anchas (sm+). En celular se
+              lee mejor como tarjetas apiladas (ver bloque de abajo) que
+              forzando scroll horizontal para ver las 11 columnas. */}
+          <Card className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-slate-400 border-b border-slate-800">
+                  <th className="py-2 pr-3">ID</th>
+                  <th className="py-2 pr-3">Fecha</th>
+                  <th className="py-2 pr-3">Color</th>
+                  <th className="py-2 pr-3">Figura</th>
+                  <th className="py-2 pr-3">Venta</th>
+                  <th className="py-2 pr-3">Costo</th>
+                  <th className="py-2 pr-3">Vendidos</th>
+                  <th className="py-2 pr-3">Tu Ganancia</th>
+                  <th className="py-2 pr-3">Premio Acum.</th>
+                  <th className="py-2 pr-3">Estatus</th>
+                  <th className="py-2 pr-3">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorteos.map((s) => {
+                  return (
+                    <tr key={s.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
+                      <td className="py-2 pr-3 text-slate-400">#{s.id}</td>
+                      <td className="py-2 pr-3">{s.fecha_hora?.replace('T', ' ')}</td>
+                      <td className="py-2 pr-3"><Badge>{s.color}</Badge></td>
+                      <td className="py-2 pr-3">
+                        <div className="flex flex-col gap-1">
+                          {(s.figuras || []).map((f) => (
+                            <div key={f.patron} className="flex items-center gap-1.5">
+                              <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} />
+                              <span className="text-xs text-slate-400">
+                                {f.label} ({s.modo_premio === 'monto_fijo' ? money(f.monto) : s.modo_premio === 'sin_premio' ? 'sin monto' : `${f.porcentaje}%`}){f.ganada ? ' ✅' : ''}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3">{s.tipo_venta === 1 ? '1 Cartón' : `Combo x${s.tipo_venta}`}</td>
+                      <td className="py-2 pr-3">{money(s.costo)}</td>
+                      <td className="py-2 pr-3">{s.vendidos}/{s.totalCartones}</td>
+                      <td className="py-2 pr-3 text-emerald-400 font-semibold">{money(s.gananciaActual)}</td>
+                      <td className="py-2 pr-3 text-rose-300 font-semibold">{money(s.premioAcumulado)}</td>
+                      <td className="py-2 pr-3">
+                        <Badge tone={s.estatus === 'activo' ? 'green' : s.estatus === 'en_juego' ? 'yellow' : s.estatus === 'pausado' ? 'red' : 'gray'}>{s.estatus}</Badge>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="flex gap-1">
+                          <Button variant="ghost" onClick={() => setPanelId(s.id)}>🎙️ Panel</Button>
+                          <Button variant="danger" onClick={() => eliminar(s.id)}>🗑️</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!sorteos.length && <tr><td colSpan="11" className="text-center text-slate-500 py-8">No hay sorteos creados aún.</td></tr>}
+              </tbody>
+            </table>
+          </Card>
+
+          {/* Tarjetas — solo en celular (debajo de sm). Mismos datos que la
+              tabla de arriba, apilados en vez de en columnas, para no
+              necesitar scroll horizontal. */}
+          <div className="sm:hidden space-y-3">
+            {sorteos.map((s) => (
+              <Card key={s.id} className="space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 text-sm">#{s.id}</span>
+                    <Badge>{s.color}</Badge>
+                  </div>
+                  <Badge tone={s.estatus === 'activo' ? 'green' : s.estatus === 'en_juego' ? 'yellow' : s.estatus === 'pausado' ? 'red' : 'gray'}>{s.estatus}</Badge>
+                </div>
+                <div className="text-xs text-slate-400">{s.fecha_hora?.replace('T', ' ')}</div>
+                <div className="flex flex-col gap-1">
+                  {(s.figuras || []).map((f) => (
+                    <div key={f.patron} className="flex items-center gap-1.5">
+                      <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} />
+                      <span className="text-xs text-slate-400">
+                        {f.label} ({s.modo_premio === 'monto_fijo' ? money(f.monto) : s.modo_premio === 'sin_premio' ? 'sin monto' : `${f.porcentaje}%`}){f.ganada ? ' ✅' : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm pt-2 border-t border-slate-700/50">
+                  <div><span className="text-slate-500 text-xs block">Venta</span>{s.tipo_venta === 1 ? '1 Cartón' : `Combo x${s.tipo_venta}`}</div>
+                  <div><span className="text-slate-500 text-xs block">Costo</span>{money(s.costo)}</div>
+                  <div><span className="text-slate-500 text-xs block">Vendidos</span>{s.vendidos}/{s.totalCartones}</div>
+                  <div><span className="text-slate-500 text-xs block">Tu Ganancia</span><span className="text-emerald-400 font-semibold">{money(s.gananciaActual)}</span></div>
+                  <div className="col-span-2"><span className="text-slate-500 text-xs block">Premio Acumulado</span><span className="text-rose-300 font-semibold">{money(s.premioAcumulado)}</span></div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button variant="ghost" className="flex-1" onClick={() => setPanelId(s.id)}>🎙️ Panel</Button>
+                  <Button variant="danger" onClick={() => eliminar(s.id)}>🗑️</Button>
+                </div>
+              </Card>
+            ))}
+            {!sorteos.length && <p className="text-center text-slate-500 py-8">No hay sorteos creados aún.</p>}
+          </div>
+        </>
       )}
     </div>
   );
