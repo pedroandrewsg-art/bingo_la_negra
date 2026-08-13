@@ -2651,7 +2651,7 @@ function WhatsappLivePanel({ sorteoId }) {
     const linea = (g) => {
       const num = g.etiquetaEmoji;
       if (g.disponible) return num;
-      const marca = g.pagado ? ` ${config.pagado_emoji}` : ` ${config.pendiente_emoji}`;
+      const marca = g.pagado ? ` ${config.pagado_emoji}` : '';
       return `${num} ${g.nombre || ''}${marca}`;
     };
     const cuerpo = conjuntos.map(linea).join('\n');

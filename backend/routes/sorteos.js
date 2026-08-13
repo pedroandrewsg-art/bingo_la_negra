@@ -552,7 +552,7 @@ router.get('/:id/lista-texto', requireAuth, requireAdmin, (req, res) => {
     .map((g) => {
       const num = etiquetaConjuntoEmoji(g);
       if (g.disponible) return num;
-      const marca = g.pagado ? ` ${cfg.pagado_emoji}` : ` ${cfg.pendiente_emoji}`;
+      const marca = g.pagado ? ` ${cfg.pagado_emoji}` : '';
       return `${num} ${g.nombre || ''}${marca}`;
     })
     .join('\n');
