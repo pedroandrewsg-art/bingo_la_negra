@@ -8,13 +8,13 @@ const { SECRET, requireAuth, requireAdmin } = require('../authMiddleware');
 const router = express.Router();
 
 // ---------- LOGIN ADMINISTRADOR (usuario + contraseña) ----------
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!user) return res.status(401).json({ error: 'Credenciales inválidas' });
-  const ok = bcrypt.compareSync(password, user.password);
+  const ok = await bcrypt.compare(password, user.password);
   if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
-  const token = jwt.sign({ id: user.id, username: user.username, role: 'admin' }, SECRET, { expiresIn: '12h' });
+  const token = jwt.sign({ id: user.id, username: user.username, role: 'admin' }, SECRET, { expiresIn: '30d' });
   res.json({ token, user: { id: user.id, username: user.username, role: 'admin' } });
 });
 
@@ -30,24 +30,24 @@ router.get('/usuarios', requireAuth, requireAdmin, (req, res) => {
   res.json({ usuarios });
 });
 
-router.post('/usuarios', requireAuth, requireAdmin, (req, res) => {
+router.post('/usuarios', requireAuth, requireAdmin, async (req, res) => {
   const username = (req.body.username || '').trim();
   const { password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
   if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
   const existe = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
   if (existe) return res.status(400).json({ error: 'Ya existe un usuario con ese nombre' });
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = await bcrypt.hash(password, 10);
   const info = db.prepare(`INSERT INTO users (username, password, role) VALUES (?, ?, 'admin')`).run(username, hash);
   res.json({ ok: true, usuario: { id: info.lastInsertRowid, username } });
 });
 
-router.put('/usuarios/:id/password', requireAuth, requireAdmin, (req, res) => {
+router.put('/usuarios/:id/password', requireAuth, requireAdmin, async (req, res) => {
   const { password } = req.body;
   if (!password || password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
   const usuario = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = await bcrypt.hash(password, 10);
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, req.params.id);
   res.json({ ok: true });
 });
