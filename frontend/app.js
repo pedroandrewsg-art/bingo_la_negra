@@ -1455,10 +1455,8 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
     });
   }
 
-  const [numerosInput, setNumerosInput] = useState('');
+  const [ventaInput, setVentaInput] = useState('');
   const [accionMsg, setAccionMsg] = useState('');
-  const [asignarNombre, setAsignarNombre] = useState('');
-  const [asignarNumerosInput, setAsignarNumerosInput] = useState('');
 
   // Edición de figuras (agregar/quitar/cambiar % o monto) y de rango
   // (ampliar o reducir cuántas cartas hay a la venta) de un sorteo ya creado.
@@ -1620,8 +1618,19 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
     };
   }, [sorteoId]);
 
-  function parseNumeros() {
-    return numerosInput.split(/[\s,]+/).map((n) => parseInt(n, 10)).filter((n) => !Number.isNaN(n));
+  // Un solo campo para todo: si hay texto antes de los números se toma como
+  // nombre (para Apartar); si el campo es solo números, no hay nombre (para
+  // Pagado/Disponible). "Pedro 15, 20" -> nombre "Pedro", números [15,20].
+  function parseVentaInput() {
+    const tokens = ventaInput.trim().split(/[\s,]+/).filter(Boolean);
+    const numeros = [];
+    let i = tokens.length - 1;
+    while (i >= 0 && /^\d+$/.test(tokens[i])) {
+      numeros.unshift(parseInt(tokens[i], 10));
+      i--;
+    }
+    const nombre = tokens.slice(0, i + 1).join(' ');
+    return { nombre, numeros };
   }
 
   async function marcarPagado(numeros) {
@@ -1639,34 +1648,34 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
     loadAll();
   }
 
-  async function confirmarPago() {
-    const numeros = parseNumeros();
-    if (!numeros.length) return;
+  async function pagarDesdeInput() {
+    const { numeros } = parseVentaInput();
+    if (!numeros.length) { setAccionMsg('⚠️ Escribe al menos un número de cartón.'); return; }
     await marcarPagado(numeros);
-    setNumerosInput('');
+    setVentaInput('');
   }
 
-  async function asignarCarton() {
-    const numeros = asignarNumerosInput.split(/[\s,]+/).map((n) => parseInt(n, 10)).filter((n) => !Number.isNaN(n));
-    if (!numeros.length || !asignarNombre.trim()) return;
+  async function apartarDesdeInput() {
+    const { nombre, numeros } = parseVentaInput();
+    if (!numeros.length) { setAccionMsg('⚠️ Escribe al menos un número de cartón.'); return; }
+    if (!nombre) { setAccionMsg('⚠️ Para apartar, escribe el nombre antes de los números (Ej: Pedro 15, 20).'); return; }
     const d = await apiFetch('/cartones/asignar', {
       method: 'PUT',
-      body: JSON.stringify({ sorteo_id: sorteoId, numeros, nombre: asignarNombre.trim() }),
+      body: JSON.stringify({ sorteo_id: sorteoId, numeros, nombre }),
     });
     let msg = d.asignados.length ? `📌 Apartado para ${d.jugador.nombre}: ${d.asignados.join(', ')}` : '';
     if (d.yaOcupados.length) msg += ` · ⚠️ Ya estaban ocupados: ${d.yaOcupados.join(', ')}`;
     if (d.noEncontrados.length) msg += ` · ❌ No existen: ${d.noEncontrados.join(', ')}`;
     setAccionMsg(msg);
-    setAsignarNombre('');
-    setAsignarNumerosInput('');
+    setVentaInput('');
     loadAll();
   }
 
-  async function ponerDisponible() {
-    const numeros = parseNumeros();
-    if (!numeros.length) return;
+  async function liberarDesdeInput() {
+    const { numeros } = parseVentaInput();
+    if (!numeros.length) { setAccionMsg('⚠️ Escribe al menos un número de cartón.'); return; }
     await liberarNumeros(numeros);
-    setNumerosInput('');
+    setVentaInput('');
   }
 
   async function liberarPendientes() {
@@ -1880,31 +1889,29 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
         )}
       </Card>
 
-      <Card className="space-y-4">
+      <Card className="space-y-3">
         <h3 className="font-bold text-rose-100">🧾 Verificación de Ventas</h3>
 
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex-1 min-w-[200px]">
-            <Label>Números de Carta (separados por espacio o coma)</Label>
-            <Input value={numerosInput} onChange={(e) => setNumerosInput(e.target.value)} placeholder="Ej: 1, 5, 12" />
-          </div>
-          <Button variant="success" onClick={confirmarPago}>✅ Confirmar Pago</Button>
-          <Button variant="ghost" onClick={ponerDisponible}>♻️ Poner Disponible</Button>
-          <Button variant="danger" onClick={liberarPendientes}>🧹 Liberar Pendientes</Button>
+        <div>
+          <Label>Nombre y Número(s) de Cartón</Label>
+          <Input
+            value={ventaInput}
+            onChange={(e) => setVentaInput(e.target.value)}
+            placeholder="Ej: Pedro 15, 20 (o solo 15, 20 si liberas)"
+          />
+          <p className="text-xs text-slate-500 mt-1.5">
+            Para <b className="text-slate-400">Apartar</b>: nombre seguido de los números — <span className="text-slate-400">Pedro 15, 20</span>.{' '}
+            Para <b className="text-slate-400">Pagado</b> o <b className="text-slate-400">Disponible/Liberar</b>: solo los números, sin nombre — <span className="text-slate-400">15, 20</span>.
+          </p>
         </div>
 
-        <div className="pt-3 border-t border-slate-700/50 flex flex-wrap items-end gap-2">
-          <div className="min-w-[160px]">
-            <Label>Nombre</Label>
-            <Input value={asignarNombre} onChange={(e) => setAsignarNombre(e.target.value)} placeholder="Nombre completo" />
-          </div>
-          <div className="flex-1 min-w-[160px]">
-            <Label>Números de Carta a Apartar</Label>
-            <Input value={asignarNumerosInput} onChange={(e) => setAsignarNumerosInput(e.target.value)} placeholder="Ej: 3, 7" />
-          </div>
-          <Button onClick={asignarCarton} disabled={!asignarNombre.trim() || !asignarNumerosInput.trim()}>📌 Asignar/Apartar</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={apartarDesdeInput}>🕐 Apartar</Button>
+          <Button variant="success" onClick={pagarDesdeInput}>✅ Pagado</Button>
+          <Button variant="ghost" onClick={liberarDesdeInput}>🔓 Disponible / Liberar</Button>
+          <Button variant="danger" onClick={liberarPendientes}>🧹 Liberar Pendientes</Button>
         </div>
-        {accionMsg && <div className="text-sm text-rose-300 bg-rose-500/10 border border-bingopurple/30 rounded-lg px-3 py-2">{accionMsg}</div>}
+        {accionMsg && <div className="text-sm text-rose-300 bg- bg- border border-bingopurple/30 rounded-lg px-3 py-2">{accionMsg}</div>}
       </Card>
 
       <WhatsappLivePanel sorteoId={sorteoId} />
