@@ -233,7 +233,7 @@ function WhatsappBubble({ texto }) {
   const hora = new Date().toLocaleTimeString('es-VE', { hour: 'numeric', minute: '2-digit', hour12: true });
   return (
     <div className="max-w-md ml-auto bg-[#dcf8c6] rounded-lg rounded-tr-none shadow px-3 py-2">
-      <div className="whitespace-pre-wrap break-words font-sans text-[13px] text-slate-900 leading-snug">
+      <div className="whitespace-pre-wrap break-words font-sans text-[13px] text-slate-900 leading-snug max-h-96 overflow-y-auto pr-1">
         {texto.split('\n').map((linea, i) => <div key={i}>{linea ? <WhatsappBubbleLinea texto={linea} /> : ' '}</div>)}
       </div>
       <div className="text-right text-[11px] text-slate-500 mt-1">{hora} <span className="text-sky-500">✔✔</span></div>
