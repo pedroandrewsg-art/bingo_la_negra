@@ -243,11 +243,13 @@ function WhatsappBubble({ texto }) {
 
 // Encabezado verde tipo "chat" + fondo con textura, para que WhatsappBubble
 // se vea dentro de un marco reconocible como WhatsApp.
-function WhatsappChatFrame({ titulo, subtitulo, children }) {
+function WhatsappChatFrame({ titulo, subtitulo, logoUrl, children }) {
   return (
     <div className="rounded-xl overflow-hidden border border-slate-700">
       <div className="bg-emerald-700 px-4 py-3 flex items-center gap-2">
-        <div className="w-8 h-8 rounded-full bg-emerald-900/40 flex items-center justify-center text-lg shrink-0">💬</div>
+        <div className="w-8 h-8 rounded-full bg-emerald-900/40 flex items-center justify-center text-lg shrink-0 overflow-hidden">
+          {logoUrl ? <img src={logoUrl} alt={titulo} className="w-full h-full object-cover" /> : '💬'}
+        </div>
         <div>
           <div className="text-white font-semibold text-sm leading-tight">{titulo}</div>
           <div className="text-emerald-200 text-xs leading-tight">{subtitulo}</div>
@@ -2515,6 +2517,7 @@ function AdminCatalogos() {
 // backend/routes/sorteos.js: si se edita el formato de una, hay que editar
 // la otra para que no se desalineen.
 function WhatsappLivePanel({ sorteoId }) {
+  const { logoUrl } = useSettings();
   const [configMinimizada, setConfigMinimizada] = useState(true);
   const [datos, setDatos] = useState(null);
   const [config, setConfig] = useState(null);
@@ -2665,7 +2668,7 @@ function WhatsappLivePanel({ sorteoId }) {
             </div>
           )}
 
-          <WhatsappChatFrame titulo="Lista de Bingo Virtual" subtitulo="En línea">
+          <WhatsappChatFrame titulo="Bingo la Negra" subtitulo="En línea" logoUrl={logoUrl}>
             {subTab === 'nombres' ? (
               <div className="space-y-2">
                 <Input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar participante..." />
