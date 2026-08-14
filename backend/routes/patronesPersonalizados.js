@@ -4,6 +4,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../authMiddleware');
+const { registrarLog } = require('../logActividad');
 
 const router = express.Router();
 
@@ -27,12 +28,15 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
   const info = db
     .prepare('INSERT INTO patrones_personalizados (nombre, mascara) VALUES (?, ?)')
     .run(nombreTrim, JSON.stringify(mascaraFinal));
+  registrarLog(req, 'configuracion', 'Creó una figura personalizada', nombreTrim);
   res.json({ patron: { key: `custom_${info.lastInsertRowid}`, label: nombreTrim, preview: mascaraFinal, personalizada: true } });
 });
 
 router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
+  const figura = db.prepare('SELECT nombre FROM patrones_personalizados WHERE id = ?').get(req.params.id);
   const info = db.prepare('DELETE FROM patrones_personalizados WHERE id = ?').run(req.params.id);
   if (!info.changes) return res.status(404).json({ error: 'Figura no encontrada' });
+  registrarLog(req, 'configuracion', 'Eliminó una figura personalizada', figura?.nombre);
   res.json({ ok: true });
 });
 

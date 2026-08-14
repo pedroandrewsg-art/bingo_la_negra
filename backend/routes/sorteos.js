@@ -5,6 +5,7 @@ const { requireAuth, requireAdmin } = require('../authMiddleware');
 const { obtenerPlantillas } = require('../plantillas');
 const { listPatterns, checkPattern } = require('../patterns');
 const WHATSAPP_LIVE_DEFAULTS = require('../whatsappLiveDefaults');
+const { registrarLog } = require('../logActividad');
 
 const router = express.Router();
 
@@ -313,6 +314,7 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
   }
 
   req.app.get('io').emit('sorteos-cambio', {});
+  registrarLog(req, 'sorteos', 'Creó un sorteo', `${color} · ${fecha_hora}`);
   res.json({ sorteo: computeStats(sorteoId) });
 });
 
@@ -345,10 +347,19 @@ router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   if (CAMPOS_VISIBLES_EN_LISTA.some((f) => req.body[f] !== undefined)) {
     req.app.get('io').emit('sorteos-cambio', {});
   }
+  // encabezado/pie_pagina quedan afuera del log: WhatsappLivePanel los
+  // autoguarda solo (cada vez que el admin deja de escribir), asi que
+  // registrarlos aca inundaria el registro con un "Editó un sorteo" por
+  // cada tecla -- esta ruta generica tambien recibe esas dos llamadas.
+  const huboCambioRelevante =
+    ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'catalogo_imagenes_id'].some((f) => req.body[f] !== undefined) ||
+    req.body.pronto_pago_activo !== undefined;
+  if (huboCambioRelevante) registrarLog(req, 'sorteos', 'Editó un sorteo', `Sorteo #${id} (${existing.color})`);
   res.json({ sorteo: computeStats(id) });
 });
 
 router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
+  const sorteo = db.prepare('SELECT color, fecha_hora FROM sorteos WHERE id = ?').get(req.params.id);
   db.prepare('DELETE FROM reclamos WHERE sorteo_id = ?').run(req.params.id);
   db.prepare('DELETE FROM ganadores WHERE sorteo_id = ?').run(req.params.id);
   db.prepare('DELETE FROM ventas WHERE sorteo_id = ?').run(req.params.id);
@@ -356,6 +367,7 @@ router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   db.prepare('DELETE FROM tablero_marcas WHERE sorteo_id = ?').run(req.params.id);
   db.prepare('DELETE FROM sorteos WHERE id = ?').run(req.params.id);
   req.app.get('io').emit('sorteos-cambio', {});
+  registrarLog(req, 'sorteos', 'Eliminó un sorteo', sorteo ? `Sorteo #${req.params.id} (${sorteo.color} · ${sorteo.fecha_hora})` : `Sorteo #${req.params.id}`);
   res.json({ ok: true });
 });
 
@@ -378,6 +390,7 @@ router.delete('/:id/figuras/:patron', requireAuth, requireAdmin, (req, res) => {
     io.emit('sorteos-cambio', {});
   }
 
+  registrarLog(req, 'sorteos', 'Quitó una figura', `${patron} (Sorteo #${id})`);
   res.json({ sorteo: computeStats(id) });
 });
 
@@ -401,6 +414,7 @@ router.put('/:id/figuras/:patron/cerrar', requireAuth, requireAdmin, (req, res) 
     io.emit('sorteos-cambio', {});
   }
 
+  registrarLog(req, 'sorteos', 'Cerró una figura', `${patron} (Sorteo #${id})`);
   res.json({ sorteo: computeStats(id) });
 });
 
@@ -465,6 +479,7 @@ router.put('/:id/figuras', requireAuth, requireAdmin, (req, res) => {
   const io = req.app.get('io');
   io.emit('sorteos-cambio', {});
   io.to(`sorteo-${id}`).emit('cartones-actualizados', { sorteoId: Number(id) });
+  registrarLog(req, 'sorteos', 'Actualizó las figuras', `Sorteo #${id}`);
   res.json({ sorteo: computeStats(id) });
 });
 
@@ -513,6 +528,7 @@ router.put('/:id/rango', requireAuth, requireAdmin, (req, res) => {
   const io = req.app.get('io');
   io.emit('sorteos-cambio', {});
   io.to(`sorteo-${id}`).emit('cartones-actualizados', { sorteoId: Number(id) });
+  registrarLog(req, 'sorteos', 'Cambió el rango de cartas', `Sorteo #${id}: hasta #${nuevoHasta}`);
   res.json({ sorteo: computeStats(id) });
 });
 
@@ -609,6 +625,7 @@ router.put('/:id/liberar-pendientes', requireAuth, requireAdmin, (req, res) => {
     .prepare(`UPDATE cartones SET estado = 'disponible', owner_id = NULL, marcados = '[]' WHERE sorteo_id = ? AND estado = 'vendido'`)
     .run(req.params.id);
   if (info.changes) req.app.get('io').to(`sorteo-${req.params.id}`).emit('cartones-actualizados', { sorteoId: Number(req.params.id) });
+  if (info.changes) registrarLog(req, 'cartones', 'Liberó pendientes en bloque', `${info.changes} cartón(es) (Sorteo #${req.params.id})`);
   res.json({ ok: true, liberados: info.changes });
 });
 

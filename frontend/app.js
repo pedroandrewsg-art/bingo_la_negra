@@ -2844,6 +2844,106 @@ function WhatsappLivePanel({ sorteoId }) {
   );
 }
 
+// ===========================================================================
+// REGISTRO DE ACTIVIDAD (auditoría) — ver backend/logActividad.js
+// ===========================================================================
+const LOG_CATEGORIAS = [
+  { key: 'login', label: 'Inicio de sesión', icon: '🔑' },
+  { key: 'cartones', label: 'Cartones y Jugadores', icon: '🎫' },
+  { key: 'sorteos', label: 'Sorteos', icon: '🎯' },
+  { key: 'ventas', label: 'Ventas', icon: '💹' },
+  { key: 'usuarios', label: 'Usuarios y Accesos', icon: '👤' },
+  { key: 'configuracion', label: 'Configuración', icon: '⚙️' },
+];
+
+function AdminActividad() {
+  const [categoria, setCategoria] = useState('');
+  const [logs, setLogs] = useState([]);
+  const [conteos, setConteos] = useState({});
+  const [limit, setLimit] = useState(300);
+  const [loading, setLoading] = useState(true);
+
+  function load() {
+    setLoading(true);
+    const qs = new URLSearchParams({ limit });
+    if (categoria) qs.set('categoria', categoria);
+    apiFetch('/logs?' + qs.toString())
+      .then((d) => { setLogs(d.logs); setConteos(d.conteos); })
+      .finally(() => setLoading(false));
+  }
+  useEffect(load, [categoria, limit]);
+
+  const catActiva = LOG_CATEGORIAS.find((c) => c.key === categoria);
+
+  async function limpiar() {
+    const texto = catActiva
+      ? `¿Eliminar el registro de "${catActiva.label}"? Esta acción no se puede deshacer.`
+      : '¿Eliminar TODO el registro de actividad? Esta acción no se puede deshacer.';
+    if (!confirm(texto)) return;
+    await apiFetch('/logs' + (categoria ? '?categoria=' + categoria : ''), { method: 'DELETE' });
+    setLimit(300);
+    load();
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-rose-100">Registro de Actividad</h2>
+          <p className="text-sm text-slate-400">Quién hizo qué y cuándo — apartados, pagos, sorteos, usuarios y configuración.</p>
+        </div>
+        <Button variant="danger" onClick={limpiar}>🗑️ Limpiar {catActiva ? `"${catActiva.label}"` : 'todo'}</Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setCategoria('')}
+          className={`text-xs px-3 py-1.5 rounded-full border transition ${!categoria ? 'bg-bingopurple/30 border-bingopurple/50 text-rose-200' : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}
+        >
+          Todos ({conteos.total || 0})
+        </button>
+        {LOG_CATEGORIAS.map((c) => (
+          <button
+            key={c.key}
+            onClick={() => setCategoria(c.key)}
+            className={`text-xs px-3 py-1.5 rounded-full border transition ${categoria === c.key ? 'bg-bingopurple/30 border-bingopurple/50 text-rose-200' : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}
+          >
+            {c.icon} {c.label} ({conteos[c.key] || 0})
+          </button>
+        ))}
+      </div>
+
+      <Card>
+        {loading ? <Spinner /> : (
+          <>
+            <div className="space-y-2">
+              {logs.map((l) => {
+                const cat = LOG_CATEGORIAS.find((c) => c.key === l.categoria);
+                return (
+                  <div key={l.id} className="flex flex-wrap items-start gap-2 sm:gap-3 border-b border-slate-800/60 pb-2 last:border-0">
+                    <span className="text-xs text-slate-500 whitespace-nowrap">{l.created_at}</span>
+                    <Badge>{cat?.icon || '📋'} {cat?.label || l.categoria}</Badge>
+                    <div className="flex-1 min-w-[160px]">
+                      <div className="text-sm"><b>{l.usuario_nombre || 'Sistema'}</b> — {l.accion}</div>
+                      {l.detalle && <div className="text-xs text-slate-400">{l.detalle}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+              {!logs.length && <p className="text-center text-slate-500 py-8">Sin actividad registrada.</p>}
+            </div>
+            {logs.length >= limit && (
+              <div className="text-center mt-4">
+                <Button variant="ghost" onClick={() => setLimit((n) => n + 200)}>Cargar más</Button>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function AdminApp() {
   const [tab, setTab] = useState('sorteos');
   const tabs = [
@@ -2853,6 +2953,7 @@ function AdminApp() {
     { key: 'ventas', label: 'Ventas', icon: '💹' },
     { key: 'jugadores', label: 'Jugadores', icon: '👥' },
     { key: 'config', label: 'Configuración', icon: '⚙️' },
+    { key: 'actividad', label: 'Registro de Actividad', icon: '📋' },
   ];
   return (
     <Shell title="Panel de Administración" tabs={tabs} active={tab} onTab={setTab} right={<TopUserMenu />}>
@@ -2862,6 +2963,7 @@ function AdminApp() {
       {tab === 'ventas' && <AdminVentas />}
       {tab === 'jugadores' && <AdminJugadores />}
       {tab === 'config' && <AdminConfiguracion />}
+      {tab === 'actividad' && <AdminActividad />}
     </Shell>
   );
 }

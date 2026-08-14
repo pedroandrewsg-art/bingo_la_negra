@@ -2,6 +2,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../authMiddleware');
+const { registrarLog } = require('../logActividad');
 
 const router = express.Router();
 
@@ -61,7 +62,9 @@ router.get('/ganadores', requireAuth, requireAdmin, (req, res) => {
 });
 
 router.put('/ganadores/:id/pagar', requireAuth, requireAdmin, (req, res) => {
+  const ganador = db.prepare('SELECT patron, nombre, premio FROM ganadores WHERE id = ?').get(req.params.id);
   db.prepare('UPDATE ganadores SET pagado = 1 WHERE id = ?').run(req.params.id);
+  registrarLog(req, 'ventas', 'Pagó un premio', ganador ? `${ganador.patron} — ${ganador.nombre || 'N/A'} (Bs ${ganador.premio})` : `Ganador #${req.params.id}`);
   res.json({ ok: true });
 });
 

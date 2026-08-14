@@ -2,6 +2,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../authMiddleware');
+const { registrarLog } = require('../logActividad');
 
 const router = express.Router();
 
@@ -28,7 +29,9 @@ router.get('/', requireAuth, requireAdmin, (req, res) => {
 });
 
 router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
+  const jugador = db.prepare('SELECT nombre FROM jugadores WHERE id = ?').get(req.params.id);
   db.prepare('DELETE FROM jugadores WHERE id = ?').run(req.params.id);
+  registrarLog(req, 'cartones', 'Eliminó un jugador', jugador?.nombre);
   res.json({ ok: true });
 });
 

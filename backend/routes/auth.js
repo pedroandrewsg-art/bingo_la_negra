@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
 const { SECRET, requireAuth, requireAdmin } = require('../authMiddleware');
+const { registrarLog } = require('../logActividad');
 
 const router = express.Router();
 
@@ -11,10 +12,17 @@ const router = express.Router();
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-  if (!user) return res.status(401).json({ error: 'Credenciales inválidas' });
+  if (!user) {
+    registrarLog({ user: { id: null, username } }, 'login', 'Inicio de sesión fallido', 'Usuario no existe');
+    return res.status(401).json({ error: 'Credenciales inválidas' });
+  }
   const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
+  if (!ok) {
+    registrarLog({ user: { id: null, username } }, 'login', 'Inicio de sesión fallido', 'Contraseña incorrecta');
+    return res.status(401).json({ error: 'Credenciales inválidas' });
+  }
   const token = jwt.sign({ id: user.id, username: user.username, role: 'admin' }, SECRET, { expiresIn: '30d' });
+  registrarLog({ user: { id: user.id, username: user.username } }, 'login', 'Inicio de sesión', null);
   res.json({ token, user: { id: user.id, username: user.username, role: 'admin' } });
 });
 
@@ -39,16 +47,18 @@ router.post('/usuarios', requireAuth, requireAdmin, async (req, res) => {
   if (existe) return res.status(400).json({ error: 'Ya existe un usuario con ese nombre' });
   const hash = await bcrypt.hash(password, 10);
   const info = db.prepare(`INSERT INTO users (username, password, role) VALUES (?, ?, 'admin')`).run(username, hash);
+  registrarLog(req, 'usuarios', 'Creó un usuario administrador', username);
   res.json({ ok: true, usuario: { id: info.lastInsertRowid, username } });
 });
 
 router.put('/usuarios/:id/password', requireAuth, requireAdmin, async (req, res) => {
   const { password } = req.body;
   if (!password || password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
-  const usuario = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
+  const usuario = db.prepare('SELECT id, username FROM users WHERE id = ?').get(req.params.id);
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
   const hash = await bcrypt.hash(password, 10);
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, req.params.id);
+  registrarLog(req, 'usuarios', 'Cambió una contraseña', usuario.username);
   res.json({ ok: true });
 });
 
@@ -57,8 +67,10 @@ router.delete('/usuarios/:id', requireAuth, requireAdmin, (req, res) => {
   if (id === req.user.id) return res.status(400).json({ error: 'No podés eliminar tu propio usuario' });
   const total = db.prepare('SELECT COUNT(*) c FROM users').get().c;
   if (total <= 1) return res.status(400).json({ error: 'Debe quedar al menos un usuario administrador' });
+  const usuario = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
   const info = db.prepare('DELETE FROM users WHERE id = ?').run(id);
   if (!info.changes) return res.status(404).json({ error: 'Usuario no encontrado' });
+  registrarLog(req, 'usuarios', 'Eliminó un usuario administrador', usuario?.username);
   res.json({ ok: true });
 });
 

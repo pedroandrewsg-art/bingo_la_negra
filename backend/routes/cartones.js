@@ -3,6 +3,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../authMiddleware');
 const { generateUniqueCards } = require('../cardGenerator');
+const { registrarLog } = require('../logActividad');
 const router = express.Router();
 
 function parseCard(c) {
@@ -58,6 +59,7 @@ router.put('/disponible', requireAuth, requireAdmin, (req, res) => {
   const stmt = db.prepare(`UPDATE cartones SET estado = 'disponible', owner_id = NULL, marcados = '[]' WHERE id = ?`);
   const tx = db.transaction((ids) => ids.forEach((id) => stmt.run(id)));
   tx(ids);
+  registrarLog(req, 'cartones', 'Liberó cartón(es) por lote', `${ids.length} cartón(es)`);
   res.json({ ok: true });
 });
 
@@ -93,7 +95,10 @@ router.put('/verificar-pago', requireAuth, requireAdmin, (req, res) => {
 
   if (pagables.length) req.app.get('io').to(`sorteo-${sorteo_id}`).emit('cartones-actualizados', { sorteoId: Number(sorteo_id) });
 
-  res.json({ ok: true, verificados: [...new Set(pagables.map((c) => c[columna]))], yaPagados, noApartados, noEncontrados });
+  const verificados = [...new Set(pagables.map((c) => c[columna]))];
+  if (verificados.length) registrarLog(req, 'cartones', 'Confirmó pago', `#${verificados.join(', #')} (Sorteo #${sorteo_id})`);
+
+  res.json({ ok: true, verificados, yaPagados, noApartados, noEncontrados });
 });
 
 // Libera cartones (vendido o pagado) de vuelta a disponible, por número dentro de un sorteo
@@ -118,7 +123,10 @@ router.put('/liberar', requireAuth, requireAdmin, (req, res) => {
 
   if (rows.length) req.app.get('io').to(`sorteo-${sorteo_id}`).emit('cartones-actualizados', { sorteoId: Number(sorteo_id) });
 
-  res.json({ ok: true, liberados: [...new Set(rows.map((c) => c[columna]))], noEncontrados });
+  const liberados = [...new Set(rows.map((c) => c[columna]))];
+  if (liberados.length) registrarLog(req, 'cartones', 'Liberó cartón(es)', `#${liberados.join(', #')} (Sorteo #${sorteo_id})`);
+
+  res.json({ ok: true, liberados, noEncontrados });
 });
 
 router.delete('/', requireAuth, requireAdmin, (req, res) => {
@@ -127,6 +135,7 @@ router.delete('/', requireAuth, requireAdmin, (req, res) => {
   const stmt = db.prepare('DELETE FROM cartones WHERE id = ?');
   const tx = db.transaction((ids) => ids.forEach((id) => stmt.run(id)));
   tx(ids);
+  registrarLog(req, 'cartones', 'Eliminó cartón(es) suelto(s)', `${ids.length} cartón(es)`);
   res.json({ ok: true });
 });
 
@@ -190,6 +199,9 @@ router.put('/asignar', requireAuth, requireAdmin, (req, res) => {
     const io = req.app.get('io');
     io.to(`sorteo-${sorteo_id}`).emit('cartones-actualizados', { sorteoId: Number(sorteo_id) });
     io.emit('sorteos-cambio', {});
+
+    const numsLog = [...new Set(asignables.map((c) => c[columna]))];
+    registrarLog(req, 'cartones', 'Apartó cartón(es)', `#${numsLog.join(', #')} para ${jugador.nombre} (Sorteo #${sorteo_id})`);
   }
 
   res.json({
@@ -308,9 +320,11 @@ router.get('/jugador/:jugadorId', requireAuth, requireAdmin, (req, res) => {
 // Simple: borra el registro de `ganadores`; si la figura ya había quedado
 // `cerrada` por esto, se mantiene así (reabrirla es una acción aparte).
 router.delete('/ganadores/:id', requireAuth, requireAdmin, (req, res) => {
+  const ganador = db.prepare('SELECT patron, nombre FROM ganadores WHERE id = ?').get(req.params.id);
   const info = db.prepare('DELETE FROM ganadores WHERE id = ?').run(req.params.id);
   if (!info.changes) return res.status(404).json({ error: 'Ganador no encontrado' });
   req.app.get('io').emit('sorteos-cambio', {});
+  registrarLog(req, 'ventas', 'Deshizo un registro de ganador', `${ganador?.patron} — ${ganador?.nombre || 'N/A'}`);
   res.json({ ok: true });
 });
 

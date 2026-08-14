@@ -15,6 +15,7 @@ const jugadoresRoutes = require('./routes/jugadores');
 const patronesPersonalizadosRoutes = require('./routes/patronesPersonalizados');
 const catalogosImagenesRoutes = require('./routes/catalogosImagenes');
 const settingsRoutes = require('./routes/settings');
+const logsRoutes = require('./routes/logs');
 const { attachSockets } = require('./sockets');
 const { r2, BUCKET, GetObjectCommand } = require('./r2');
 
@@ -54,6 +55,7 @@ app.use('/api/jugadores', jugadoresRoutes);
 app.use('/api/patrones-personalizados', patronesPersonalizadosRoutes);
 app.use('/api/catalogos-imagenes', catalogosImagenesRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/logs', logsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 

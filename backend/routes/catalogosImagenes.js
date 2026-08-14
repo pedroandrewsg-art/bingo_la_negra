@@ -6,6 +6,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../authMiddleware');
+const { registrarLog } = require('../logActividad');
 
 const router = express.Router();
 
@@ -48,6 +49,7 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
   });
   tx(urls);
 
+  registrarLog(req, 'configuracion', 'Creó un catálogo de cartones personalizados', nombreTrim);
   res.json({ ok: true, id: catalogoId, total: urls.length });
 });
 
@@ -71,12 +73,15 @@ router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   });
   tx(urls);
 
+  registrarLog(req, 'configuracion', 'Editó un catálogo de cartones personalizados', nombreTrim);
   res.json({ ok: true, total: urls.length });
 });
 
 router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
+  const catalogo = db.prepare('SELECT nombre FROM catalogos_imagenes WHERE id = ?').get(req.params.id);
   const info = db.prepare('DELETE FROM catalogos_imagenes WHERE id = ?').run(req.params.id);
   if (!info.changes) return res.status(404).json({ error: 'Catálogo no encontrado' });
+  registrarLog(req, 'configuracion', 'Eliminó un catálogo de cartones personalizados', catalogo?.nombre);
   res.json({ ok: true });
 });
 

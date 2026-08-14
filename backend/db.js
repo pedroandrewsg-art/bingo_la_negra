@@ -191,6 +191,22 @@ CREATE TABLE IF NOT EXISTS catalogo_imagenes_items (
   url TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_catalogo_item_unico ON catalogo_imagenes_items(catalogo_id, numero);
+
+-- Registro de actividad (auditoria): quien hizo que y cuando. usuario_nombre
+-- va duplicado ademas del FK a proposito -- si se borra el usuario admin, el
+-- historial no pierde legibilidad (mismo criterio que owner_id en cartones).
+-- Login fallido guarda usuario_id NULL (no hay usuario valido todavia) y
+-- usuario_nombre con el username que se intento.
+CREATE TABLE IF NOT EXISTS logs_actividad (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  categoria TEXT NOT NULL,
+  accion TEXT NOT NULL,
+  detalle TEXT,
+  usuario_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  usuario_nombre TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_logs_actividad_categoria ON logs_actividad(categoria);
 `);
 
 // Migración incremental: agrega columnas nuevas a `sorteos` si la tabla ya
