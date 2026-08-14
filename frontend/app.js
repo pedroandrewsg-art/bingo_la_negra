@@ -2575,6 +2575,8 @@ function WhatsappLivePanel({ sorteoId }) {
   const [config, setConfig] = useState(null);
   const [encabezado, setEncabezado] = useState('');
   const [piePagina, setPiePagina] = useState('');
+  const [estadoEncabezado, setEstadoEncabezado] = useState(''); // '', 'guardando', 'guardado', 'error'
+  const skipNextAutosave = useRef(true);
   const [subTab, setSubTab] = useState('todo');
   const [busqueda, setBusqueda] = useState('');
   const [copiado, setCopiado] = useState('');
@@ -2588,6 +2590,10 @@ function WhatsappLivePanel({ sorteoId }) {
   useEffect(() => {
     if (!sorteoId) return;
     setDatos(null);
+    // Al abrir un sorteo (o cambiar a otro), el próximo cambio de
+    // encabezado/piePagina que dispare el efecto de autoguardado va a ser el
+    // de la semilla de abajo, no algo que el admin escribió — se descarta.
+    skipNextAutosave.current = true;
     apiFetch('/settings/whatsapp-live').then(setConfig);
     // Semilla el encabezado/pie del sorteo una sola vez por apertura (no en
     // cada refresco de los 5s) para no pisar lo que el admin esté escribiendo.
@@ -2616,6 +2622,27 @@ function WhatsappLivePanel({ sorteoId }) {
       clearInterval(interval);
     };
   }, [sorteoId]);
+
+  // Autoguarda el encabezado/pie DE ESTE SORTEO apenas el admin deja de
+  // escribir (a diferencia de la config de abajo, que es global a los 9
+  // sistemas y sí requiere el botón "Guardar" a propósito). Antes, si el
+  // admin escribía un encabezado nuevo y cerraba el panel del sorteo sin
+  // acordarse de tocar "Guardar" — para revisar otra pestaña, o porque el
+  // navegador del celular recargó la página en segundo plano — el texto se
+  // perdía en silencio y volvía a aparecer el último que sí había quedado
+  // guardado (p. ej. el de horas antes). Ver diagnóstico de "lista vieja"
+  // reportado por bingo_la_negra.
+  useEffect(() => {
+    if (!sorteoId) return;
+    if (skipNextAutosave.current) { skipNextAutosave.current = false; return; }
+    setEstadoEncabezado('guardando');
+    const t = setTimeout(() => {
+      apiFetch('/sorteos/' + sorteoId, { method: 'PUT', body: JSON.stringify({ encabezado, pie_pagina: piePagina }) })
+        .then(() => { setEstadoEncabezado('guardado'); setTimeout(() => setEstadoEncabezado((s) => (s === 'guardado' ? '' : s)), 1500); })
+        .catch(() => setEstadoEncabezado('error'));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [encabezado, piePagina, sorteoId]);
 
   function setCampo(key, value) {
     setConfig((c) => ({ ...c, [key]: value }));
@@ -2765,12 +2792,17 @@ function WhatsappLivePanel({ sorteoId }) {
           <div className="space-y-4 mt-3">
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <Label>Encabezado — Todo (Lista Completa)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Encabezado — Todo (Lista Completa, de este sorteo)</Label>
+                  {estadoEncabezado === 'guardando' && <span className="text-[11px] text-slate-500">Guardando...</span>}
+                  {estadoEncabezado === 'guardado' && <span className="text-[11px] text-emerald-400">✓ Guardado</span>}
+                  {estadoEncabezado === 'error' && <span className="text-[11px] text-red-400">Error al guardar</span>}
+                </div>
                 <textarea rows={2} value={encabezado} onChange={(e) => setEncabezado(e.target.value)}
                   placeholder="Ej: *BINGO MORADO — Hoy 8pm*" className={textareaClass} />
               </div>
               <div>
-                <Label>Pie de página — Todo</Label>
+                <Label>Pie de página — Todo (de este sorteo)</Label>
                 <textarea rows={2} value={piePagina} onChange={(e) => setPiePagina(e.target.value)}
                   placeholder="Ej: Pagos por Pago Móvil al 0412-0000000" className={textareaClass} />
               </div>
