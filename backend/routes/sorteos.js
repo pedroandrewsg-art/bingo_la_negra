@@ -5,7 +5,7 @@ const { requireAuth, requireAdmin } = require('../authMiddleware');
 const { obtenerPlantillas } = require('../plantillas');
 const { listPatterns, checkPattern } = require('../patterns');
 const WHATSAPP_LIVE_DEFAULTS = require('../whatsappLiveDefaults');
-const { registrarLog } = require('../logActividad');
+const { registrarLog, registrarLogAgrupado } = require('../logActividad');
 
 const router = express.Router();
 
@@ -347,14 +347,24 @@ router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   if (CAMPOS_VISIBLES_EN_LISTA.some((f) => req.body[f] !== undefined)) {
     req.app.get('io').emit('sorteos-cambio', {});
   }
-  // encabezado/pie_pagina quedan afuera del log: WhatsappLivePanel los
+  // encabezado/pie_pagina van con log agrupado, no aca: WhatsappLivePanel los
   // autoguarda solo (cada vez que el admin deja de escribir), asi que
-  // registrarlos aca inundaria el registro con un "Editó un sorteo" por
-  // cada tecla -- esta ruta generica tambien recibe esas dos llamadas.
+  // registrarlos como "Editó un sorteo" inundaria el registro con una fila
+  // por cada tecla -- esta ruta generica tambien recibe esas dos llamadas.
   const huboCambioRelevante =
     ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'catalogo_imagenes_id'].some((f) => req.body[f] !== undefined) ||
     req.body.pronto_pago_activo !== undefined;
   if (huboCambioRelevante) registrarLog(req, 'sorteos', 'Editó un sorteo', `Sorteo #${id} (${existing.color})`);
+  // En cambio, si se registran, pero agrupadas: ediciones dentro de una
+  // ventana de 2 minutos actualizan la misma fila del log en vez de crear
+  // una nueva (una pausa mas larga cuenta como una edicion aparte).
+  if (req.body.encabezado !== undefined || req.body.pie_pagina !== undefined) {
+    const campos = [];
+    if (req.body.encabezado !== undefined) campos.push('encabezado');
+    if (req.body.pie_pagina !== undefined) campos.push('pie de página');
+    const claveGrupo = `Sorteo #${id} (${existing.color})`;
+    registrarLogAgrupado(req, 'sorteos', 'Editó el encabezado/pie de WhatsApp', `${claveGrupo} — ${campos.join(' y ')}`, claveGrupo);
+  }
   res.json({ sorteo: computeStats(id) });
 });
 
