@@ -937,7 +937,7 @@ function Shell({ title, tabs, active, onTab, right, children }) {
         </header>
         <div className="flex md:hidden flex-wrap gap-1.5 px-3 py-2 bg-slate-950/50">
           {tabs.map((t) => (
-            <button key={t.key} onClick={() => onTab(t.key)} className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${active === t.key ? 'bg-bingopurple text-white' : 'bg-slate-800 text-slate-400'}`}>{t.icon} {t.label}</button>
+            <button key={t.key} onClick={() => onTab(t.key)} className={`flex-1 min-w-[105px] px-2 py-1.5 rounded-lg text-xs text-center leading-tight ${active === t.key ? 'bg-bingopurple text-white' : 'bg-slate-800 text-slate-400'}`}>{t.icon} {t.label}</button>
           ))}
         </div>
         <main className="flex-1 p-2 md:p-8">{children}</main>
