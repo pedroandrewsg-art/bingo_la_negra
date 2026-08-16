@@ -1906,10 +1906,10 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={apartarDesdeInput}>🕐 Apartar</Button>
-          <Button variant="success" onClick={pagarDesdeInput}>✅ Pagado</Button>
-          <Button variant="ghost" onClick={liberarDesdeInput}>🔓 Disponible / Liberar</Button>
-          <Button variant="danger" onClick={liberarPendientes}>🧹 Liberar Pendientes</Button>
+          <Button className="flex-1 min-w-[140px]" onClick={apartarDesdeInput}>🕐 Apartar</Button>
+          <Button className="flex-1 min-w-[140px]" variant="success" onClick={pagarDesdeInput}>✅ Pagado</Button>
+          <Button className="flex-1 min-w-[140px]" variant="ghost" onClick={liberarDesdeInput}>🔓 Disponible / Liberar</Button>
+          <Button className="flex-1 min-w-[140px]" variant="danger" onClick={liberarPendientes}>🧹 Liberar Pendientes</Button>
         </div>
         {accionMsg && <div className="text-sm text-rose-300 bg- bg- border border-bingopurple/30 rounded-lg px-3 py-2">{accionMsg}</div>}
       </Card>
