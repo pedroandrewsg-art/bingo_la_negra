@@ -1649,8 +1649,17 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
   }
 
   async function pagarDesdeInput() {
-    const { numeros } = parseVentaInput();
+    const { nombre, numeros } = parseVentaInput();
     if (!numeros.length) { setAccionMsg('⚠️ Escribe al menos un número de cartón.'); return; }
+    if (nombre) {
+      // Si viene con nombre, apartar primero lo que todavía esté disponible
+      // (crea al jugador si hace falta) — así "Pagado" con nombre y números
+      // sirve para el pago directo, sin pasar antes por "Apartar".
+      await apiFetch('/cartones/asignar', {
+        method: 'PUT',
+        body: JSON.stringify({ sorteo_id: sorteoId, numeros, nombre }),
+      });
+    }
     await marcarPagado(numeros);
     setVentaInput('');
   }
