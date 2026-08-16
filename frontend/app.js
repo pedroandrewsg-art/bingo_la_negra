@@ -935,7 +935,7 @@ function Shell({ title, tabs, active, onTab, right, children }) {
           </div>
           <div className="flex items-center gap-3">{right}</div>
         </header>
-        <div className="flex md:hidden gap-1 overflow-x-auto px-3 py-2 bg-slate-950/50">
+        <div className="flex md:hidden flex-wrap gap-1.5 px-3 py-2 bg-slate-950/50">
           {tabs.map((t) => (
             <button key={t.key} onClick={() => onTab(t.key)} className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${active === t.key ? 'bg-bingopurple text-white' : 'bg-slate-800 text-slate-400'}`}>{t.icon} {t.label}</button>
           ))}
@@ -2952,8 +2952,8 @@ function AdminApp() {
     { key: 'catalogos', label: 'Cartones Personalizados', icon: '🖼️' },
     { key: 'ventas', label: 'Ventas', icon: '💹' },
     { key: 'jugadores', label: 'Jugadores', icon: '👥' },
-    { key: 'config', label: 'Configuración', icon: '⚙️' },
     { key: 'actividad', label: 'Registro de Actividad', icon: '📋' },
+    { key: 'config', label: 'Configuración', icon: '⚙️' },
   ];
   return (
     <Shell title="Panel de Administración" tabs={tabs} active={tab} onTab={setTab} right={<TopUserMenu />}>
@@ -2962,8 +2962,8 @@ function AdminApp() {
       {tab === 'catalogos' && <AdminCatalogos />}
       {tab === 'ventas' && <AdminVentas />}
       {tab === 'jugadores' && <AdminJugadores />}
-      {tab === 'config' && <AdminConfiguracion />}
       {tab === 'actividad' && <AdminActividad />}
+      {tab === 'config' && <AdminConfiguracion />}
     </Shell>
   );
 }
