@@ -1934,7 +1934,7 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
       <Card>
         <h3 className="font-bold text-rose-100 mb-3">Registro de Cartas Vendidas ({cartonesPorGrupo.size})</h3>
         {(
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1 -mr-1">
             {[...cartonesPorGrupo.entries()].sort((a, b) => a[0] - b[0]).map(([grupo, cards]) => {
               const abierto = conjuntosAbiertos.has(grupo);
               const pagado = cards.every((c) => c.estado === 'pagado');
