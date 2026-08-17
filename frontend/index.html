@@ -161,6 +161,33 @@
   :root[data-theme="light"] .text-red-400 { color: #dc2626 !important; }
   :root[data-theme="light"] .text-sky-300 { color: #0369a1 !important; }
   :root[data-theme="light"] .text-orange-300 { color: #c2410c !important; }
+
+  /* Placa neón para el nombre del propietario en "Consulta tu Carta" —
+     tablero oscuro fijo (no cambia con el tema claro/oscuro) para que el
+     brillo neón se lea siempre igual de bien. */
+  .owner-neon-board {
+    display: inline-block;
+    max-width: 100%;
+    padding: 12px 26px;
+    border-radius: 14px;
+    background: radial-gradient(ellipse at center, #1a0b24 0%, #0d0414 100%);
+    border: 2px solid #bbf7d0;
+    box-shadow: 0 0 10px #bbf7d099, 0 0 24px #bbf7d055, inset 0 0 16px rgba(0,0,0,0.5);
+  }
+  .owner-neon-text {
+    display: inline-block;
+    font-size: 1.4rem;
+    line-height: 1.25;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    color: #bbf7d0;
+    word-break: break-word;
+    animation: ownerNeonPulse 2.2s ease-in-out infinite;
+  }
+  @keyframes ownerNeonPulse {
+    0%, 100% { text-shadow: 0 0 6px currentColor, 0 0 14px currentColor, 0 0 26px #bbf7d0, 0 0 42px #4ade80; }
+    50% { text-shadow: 0 0 10px currentColor, 0 0 22px currentColor, 0 0 38px #bbf7d0, 0 0 58px #4ade80; }
+  }
 </style>
 </head>
 <body class="min-h-screen text-slate-100">

@@ -738,8 +738,11 @@ function ConsultaCartonesPanel({ onVolver }) {
             Sorteo #{resultado.sorteo.id} · {resultado.sorteo.color} · {resultado.sorteo.fecha_hora?.replace('T', ' ')}
             <Badge tone={resultado.sorteo.estatus === 'en_juego' ? 'yellow' : resultado.sorteo.estatus === 'finalizado' ? 'gray' : 'green'}>{resultado.sorteo.estatus}</Badge>
           </div>
-          <div className="text-sm text-slate-200 text-center">
-            Propietario: <b>{resultado.cartones[0].owner_nombre || 'Sin dueño (disponible)'}</b>
+          <div className="text-center">
+            <div className="text-[11px] uppercase tracking-widest text-slate-400 mb-1">Este cartón pertenece a</div>
+            <div className="owner-neon-board">
+              <span className="owner-neon-text">{resultado.cartones[0].owner_nombre || 'Sin dueño (disponible)'}</span>
+            </div>
           </div>
           {resultado.cartones.length > 1
             ? <ComboCard grupo={resultado.cartones[0].grupo} color={resultado.cartones[0].color} cartones={resultado.cartones} compact={false} />
@@ -775,8 +778,11 @@ function ConsultaCartonesPanel({ onVolver }) {
             Sorteo #{sorteoNombre.id} · {sorteoNombre.color} · {sorteoNombre.fecha_hora?.replace('T', ' ')}
             <Badge tone={sorteoNombre.estatus === 'en_juego' ? 'yellow' : sorteoNombre.estatus === 'finalizado' ? 'gray' : 'green'}>{sorteoNombre.estatus}</Badge>
           </div>
-          <div className="text-sm text-slate-200 text-center">
-            Propietario: <b>{personaElegida.nombre}</b>
+          <div className="text-center">
+            <div className="text-[11px] uppercase tracking-widest text-slate-400 mb-1">Este cartón pertenece a</div>
+            <div className="owner-neon-board">
+              <span className="owner-neon-text">{personaElegida.nombre}</span>
+            </div>
           </div>
           {!personaElegida.grupos.length && (
             <p className="text-sm text-slate-500 text-center">Todavía no tiene cartones asignados en este sorteo.</p>
@@ -840,7 +846,7 @@ function AuthScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative">
       <div className="absolute top-4 right-4"><ThemeToggle /></div>
-      <div className="w-full max-w-md">
+      <div className={`w-full ${mode === 'consulta' ? 'max-w-2xl' : 'max-w-md'}`}>
         <div className="text-center mb-6">
           <img src={logoUrl || "logo.png"} alt="Bingo la Negra" className="w-24 h-24 mx-auto mb-2 rounded-full object-cover border-2 border-bingoaccent shadow-glow" />
           <h1 className="text-2xl font-black bg-gradient-to-r from-rose-300 to-pink-300 bg-clip-text text-transparent">Bingo la Negra</h1>
