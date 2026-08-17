@@ -1223,7 +1223,7 @@ function AdminSorteos() {
                 <Label>Figuras / Patrones Ganadores (elige una o varias — bingo "corrido")</Label>
                 <button type="button" onClick={() => setShowEditorFigura(true)} className="text-xs text-rose-300 hover:text-rose-200 underline shrink-0">+ Crear figura personalizada</button>
               </div>
-              <div className="grid sm:grid-cols-2 gap-2 bg-slate-800/40 rounded-xl p-3 border border-bingopurple/20">
+              <div className="grid sm:grid-cols-2 gap-2 bg-slate-800/40 rounded-xl p-3 border border-bingopurple/20 max-h-72 overflow-y-auto">
                 {patrones.map((p) => {
                   const fig = form.figuras.find((f) => f.patron === p.key);
                   return (
