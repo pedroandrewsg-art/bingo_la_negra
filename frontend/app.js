@@ -1639,34 +1639,41 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
     return { nombre, numeros };
   }
 
-  async function marcarPagado(numeros) {
-    const d = await apiFetch('/cartones/verificar-pago', { method: 'PUT', body: JSON.stringify({ sorteo_id: sorteoId, numeros }) });
-    let msg = d.verificados.length ? `✅ Pago confirmado: ${d.verificados.join(', ')}` : '';
-    if (d.noApartados.length) msg += ` · ⚠️ No estaban apartados: ${d.noApartados.join(', ')}`;
-    if (d.noEncontrados.length) msg += ` · ❌ No existen: ${d.noEncontrados.join(', ')}`;
-    setAccionMsg(msg);
-    loadAll();
+  // `criterio` es { numeros: [...] } o { nombre: '...' } — nombre solo (sin
+  // números) aplica la acción a TODOS los cartones que esa persona tiene en
+  // este sorteo, de una sola vez.
+  async function marcarPagado(criterio) {
+    try {
+      const d = await apiFetch('/cartones/verificar-pago', { method: 'PUT', body: JSON.stringify({ sorteo_id: sorteoId, ...criterio }) });
+      let msg = d.verificados.length ? `✅ Pago confirmado: ${d.verificados.join(', ')}` : '';
+      if (d.noApartados.length) msg += ` · ⚠️ No estaban apartados: ${d.noApartados.join(', ')}`;
+      if (d.noEncontrados.length) msg += ` · ❌ No existen: ${d.noEncontrados.join(', ')}`;
+      setAccionMsg(msg);
+      loadAll();
+    } catch (e) { setAccionMsg(`❌ ${e.message}`); }
   }
 
-  async function liberarNumeros(numeros) {
-    const d = await apiFetch('/cartones/liberar', { method: 'PUT', body: JSON.stringify({ sorteo_id: sorteoId, numeros }) });
-    setAccionMsg(d.liberados.length ? `♻️ Liberados: ${d.liberados.join(', ')}` : 'No se encontraron esos cartones.');
-    loadAll();
+  async function liberarNumeros(criterio) {
+    try {
+      const d = await apiFetch('/cartones/liberar', { method: 'PUT', body: JSON.stringify({ sorteo_id: sorteoId, ...criterio }) });
+      setAccionMsg(d.liberados.length ? `♻️ Liberados: ${d.liberados.join(', ')}` : 'No se encontraron esos cartones.');
+      loadAll();
+    } catch (e) { setAccionMsg(`❌ ${e.message}`); }
   }
 
   async function pagarDesdeInput() {
     const { nombre, numeros } = parseVentaInput();
-    if (!numeros.length) { setAccionMsg('⚠️ Escribe al menos un número de cartón.'); return; }
-    if (nombre) {
-      // Si viene con nombre, apartar primero lo que todavía esté disponible
-      // (crea al jugador si hace falta) — así "Pagado" con nombre y números
-      // sirve para el pago directo, sin pasar antes por "Apartar".
+    if (!numeros.length && !nombre) { setAccionMsg('⚠️ Escribe un número de cartón, o un nombre para pagar todos los suyos.'); return; }
+    if (nombre && numeros.length) {
+      // Si viene con nombre Y números, apartar primero lo que todavía esté
+      // disponible (crea al jugador si hace falta) — así "Pagado" con nombre
+      // y números sirve para el pago directo, sin pasar antes por "Apartar".
       await apiFetch('/cartones/asignar', {
         method: 'PUT',
         body: JSON.stringify({ sorteo_id: sorteoId, numeros, nombre }),
       });
     }
-    await marcarPagado(numeros);
+    await marcarPagado(numeros.length ? { numeros } : { nombre });
     setVentaInput('');
   }
 
@@ -1687,9 +1694,9 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
   }
 
   async function liberarDesdeInput() {
-    const { numeros } = parseVentaInput();
-    if (!numeros.length) { setAccionMsg('⚠️ Escribe al menos un número de cartón.'); return; }
-    await liberarNumeros(numeros);
+    const { nombre, numeros } = parseVentaInput();
+    if (!numeros.length && !nombre) { setAccionMsg('⚠️ Escribe un número de cartón, o un nombre para liberar todos los suyos.'); return; }
+    await liberarNumeros(numeros.length ? { numeros } : { nombre });
     setVentaInput('');
   }
 
@@ -1916,7 +1923,8 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
           />
           <p className="text-xs text-slate-500 mt-1.5">
             Para <b className="text-slate-400">Apartar</b>: nombre seguido de los números — <span className="text-slate-400">Pedro 15, 20</span>.{' '}
-            Para <b className="text-slate-400">Pagado</b> o <b className="text-slate-400">Disponible/Liberar</b>: solo los números, sin nombre — <span className="text-slate-400">15, 20</span>.
+            Para <b className="text-slate-400">Pagado</b> o <b className="text-slate-400">Disponible/Liberar</b>: solo los números, sin nombre — <span className="text-slate-400">15, 20</span>.{' '}
+            O escribe <b className="text-slate-400">solo el nombre</b>, sin números, para aplicar a <b className="text-slate-400">todos</b> sus cartones de una vez — <span className="text-slate-400">Pedro</span>.
           </p>
         </div>
 
@@ -1950,12 +1958,12 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
                     </button>
                     <div className="flex gap-1.5 shrink-0">
                       {!pagado && (
-                        <Button variant="success" className="!px-2 !py-1 !text-xs" onClick={() => marcarPagado(numerosConjunto)}>✅ Pagado</Button>
+                        <Button variant="success" className="!px-2 !py-1 !text-xs" onClick={() => marcarPagado({ numeros: numerosConjunto })}>✅ Pagado</Button>
                       )}
                       <Button
                         variant="ghost"
                         className="!px-2 !py-1 !text-xs"
-                        onClick={() => { if (confirm(`¿Liberar ${etiqueta}? Quedará disponible para la venta de nuevo.`)) liberarNumeros(numerosConjunto); }}
+                        onClick={() => { if (confirm(`¿Liberar ${etiqueta}? Quedará disponible para la venta de nuevo.`)) liberarNumeros({ numeros: numerosConjunto }); }}
                       >
                         ↩ Liberar
                       </Button>

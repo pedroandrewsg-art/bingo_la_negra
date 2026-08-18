@@ -63,12 +63,36 @@ router.put('/disponible', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- VERIFICACIÓN DE VENTAS (por números de cartón, dentro de un sorteo) ----------
+// Busca cartones de un sorteo por el nombre del dueño (coincidencia parcial,
+// sin importar mayúsculas). Si el match trae más de una persona distinta, no
+// se elige ninguna — se devuelve el listado para que el admin sea más
+// específico, en vez de arriesgarse a tocar los cartones de otra persona.
+function cartonesPorNombre(sorteoId, nombre) {
+  const rows = db
+    .prepare(
+      `SELECT c.*, j.nombre AS owner_nombre FROM cartones c
+       JOIN jugadores j ON j.id = c.owner_id
+       WHERE c.sorteo_id = ? AND j.nombre LIKE ? COLLATE NOCASE`
+    )
+    .all(sorteoId, `%${nombre}%`);
+  const nombresDistintos = [...new Set(rows.map((r) => r.owner_nombre))];
+  if (nombresDistintos.length > 1) {
+    // Si el texto escrito coincide EXACTO con uno de los nombres, se usa ese
+    // (ignora los demás parciales) — así escribir el nombre completo de
+    // alguien nunca queda ambiguo solo porque además es substring de otro.
+    const exacto = nombresDistintos.find((n) => n.toLowerCase() === nombre.toLowerCase());
+    if (exacto) return { rows: rows.filter((r) => r.owner_nombre === exacto) };
+    return { error: `Hay varias personas que coinciden con "${nombre}": ${nombresDistintos.join(', ')}. Sé más específico.` };
+  }
+  return { rows };
+}
+
+// ---------- VERIFICACIÓN DE VENTAS (por números de cartón o por nombre del dueño, dentro de un sorteo) ----------
 // El admin recibe el comprobante por WhatsApp y confirma el pago aquí.
 router.put('/verificar-pago', requireAuth, requireAdmin, (req, res) => {
-  const { sorteo_id, numeros } = req.body;
-  if (!sorteo_id || !Array.isArray(numeros) || !numeros.length) {
-    return res.status(400).json({ error: 'Indica el sorteo y al menos un número de cartón' });
+  const { sorteo_id, numeros, nombre } = req.body;
+  if (!sorteo_id || (!nombre && (!Array.isArray(numeros) || !numeros.length))) {
+    return res.status(400).json({ error: 'Indica el sorteo y al menos un número de cartón, o un nombre' });
   }
   const sorteo = db.prepare('SELECT tipo_venta FROM sorteos WHERE id = ?').get(sorteo_id);
   // En combos, "Registro de Cartones Vendidos" solo muestra el número de
@@ -78,9 +102,18 @@ router.put('/verificar-pago', requireAuth, requireAdmin, (req, res) => {
   // podría chocar con el numero/grupo de OTRA carta distinta, por eso se
   // elige una sola columna según el tipo de venta, nunca ambas a la vez.
   const columna = sorteo && sorteo.tipo_venta > 1 ? 'grupo' : 'numero';
-  const placeholders = numeros.map(() => '?').join(',');
-  const rows = db.prepare(`SELECT * FROM cartones WHERE sorteo_id = ? AND ${columna} IN (${placeholders})`).all(sorteo_id, ...numeros);
-  const noEncontrados = numeros.filter((n) => !rows.some((r) => r[columna] === n));
+
+  let rows, noEncontrados;
+  if (nombre && nombre.trim()) {
+    const resultado = cartonesPorNombre(sorteo_id, nombre.trim());
+    if (resultado.error) return res.status(400).json({ error: resultado.error });
+    rows = resultado.rows;
+    noEncontrados = rows.length ? [] : [nombre.trim()];
+  } else {
+    const placeholders = numeros.map(() => '?').join(',');
+    rows = db.prepare(`SELECT * FROM cartones WHERE sorteo_id = ? AND ${columna} IN (${placeholders})`).all(sorteo_id, ...numeros);
+    noEncontrados = numeros.filter((n) => !rows.some((r) => r[columna] === n));
+  }
 
   const pagables = rows.filter((c) => c.estado === 'vendido');
   // Dedupe: un combo x4 son 4 filas con el mismo grupo, pero se reporta una sola vez.
@@ -101,19 +134,28 @@ router.put('/verificar-pago', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, verificados, yaPagados, noApartados, noEncontrados });
 });
 
-// Libera cartones (vendido o pagado) de vuelta a disponible, por número dentro de un sorteo
+// Libera cartones (vendido o pagado) de vuelta a disponible, por número o por nombre del dueño, dentro de un sorteo
 router.put('/liberar', requireAuth, requireAdmin, (req, res) => {
-  const { sorteo_id, numeros } = req.body;
-  if (!sorteo_id || !Array.isArray(numeros) || !numeros.length) {
-    return res.status(400).json({ error: 'Indica el sorteo y al menos un número de cartón' });
+  const { sorteo_id, numeros, nombre } = req.body;
+  if (!sorteo_id || (!nombre && (!Array.isArray(numeros) || !numeros.length))) {
+    return res.status(400).json({ error: 'Indica el sorteo y al menos un número de cartón, o un nombre' });
   }
   const sorteo = db.prepare('SELECT tipo_venta FROM sorteos WHERE id = ?').get(sorteo_id);
   // Misma lógica que verificar-pago: una sola columna (grupo para combos,
   // numero para venta individual) para no chocar con otra carta distinta.
   const columna = sorteo && sorteo.tipo_venta > 1 ? 'grupo' : 'numero';
-  const placeholders = numeros.map(() => '?').join(',');
-  const rows = db.prepare(`SELECT * FROM cartones WHERE sorteo_id = ? AND ${columna} IN (${placeholders})`).all(sorteo_id, ...numeros);
-  const noEncontrados = numeros.filter((n) => !rows.some((r) => r[columna] === n));
+
+  let rows, noEncontrados;
+  if (nombre && nombre.trim()) {
+    const resultado = cartonesPorNombre(sorteo_id, nombre.trim());
+    if (resultado.error) return res.status(400).json({ error: resultado.error });
+    rows = resultado.rows;
+    noEncontrados = rows.length ? [] : [nombre.trim()];
+  } else {
+    const placeholders = numeros.map(() => '?').join(',');
+    rows = db.prepare(`SELECT * FROM cartones WHERE sorteo_id = ? AND ${columna} IN (${placeholders})`).all(sorteo_id, ...numeros);
+    noEncontrados = numeros.filter((n) => !rows.some((r) => r[columna] === n));
+  }
 
   const tx = db.transaction(() => {
     const stmt = db.prepare(`UPDATE cartones SET estado = 'disponible', owner_id = NULL, marcados = '[]' WHERE id = ?`);
