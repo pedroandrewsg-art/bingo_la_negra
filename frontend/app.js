@@ -100,6 +100,8 @@ function AuthProvider({ children }) {
 }
 
 // ---------------------------------------------------------------------------
+const DEFAULT_LOGIN_SUBTITLE = '75 bolillas · en tiempo real';
+
 // Settings context (config global, ej. link del grupo de WhatsApp)
 // ---------------------------------------------------------------------------
 const SettingsContext = createContext(null);
@@ -109,19 +111,24 @@ function SettingsProvider({ children }) {
   const { token } = useAuth();
   const [whatsappLink, setWhatsappLink] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
+  const [loginSubtitle, setLoginSubtitle] = useState(DEFAULT_LOGIN_SUBTITLE);
 
   function refresh() {
     return apiFetch('/settings/whatsapp').then((d) => setWhatsappLink(d.link || ''));
   }
-  // El logo es público: la pantalla de acceso lo necesita antes de identificarse.
+  // El logo y el mensaje bajo el logo son públicos: la pantalla de acceso los
+  // necesita antes de identificarse.
   function refreshLogo() {
-    return apiFetch('/settings/public').then((d) => setLogoUrl(d.logoUrl || ''));
+    return apiFetch('/settings/public').then((d) => {
+      setLogoUrl(d.logoUrl || '');
+      setLoginSubtitle(d.loginSubtitle || DEFAULT_LOGIN_SUBTITLE);
+    });
   }
   useEffect(() => { if (token) refresh(); }, [token]);
   useEffect(refreshLogo, []);
 
   return (
-    <SettingsContext.Provider value={{ whatsappLink, refresh, logoUrl, refreshLogo }}>
+    <SettingsContext.Provider value={{ whatsappLink, refresh, logoUrl, refreshLogo, loginSubtitle }}>
       {children}
     </SettingsContext.Provider>
   );
@@ -818,7 +825,7 @@ function ConsultaCartonesPanel({ onVolver }) {
 
 function AuthScreen() {
   const { login } = useAuth();
-  const { logoUrl } = useSettings();
+  const { logoUrl, loginSubtitle } = useSettings();
   // Permite abrir directo en "Verifícate en la Lista" o en "Consulta tus
   // Cartones" con un link tipo ?ver=lista o ?ver=consulta
   const [mode, setMode] = useState(() => {
@@ -861,7 +868,7 @@ function AuthScreen() {
         <div className="text-center mb-6">
           <img src={logoUrl || "logo.png"} alt="Bingo la Negra" className="w-24 h-24 mx-auto mb-2 rounded-full object-cover border-2 border-bingoaccent shadow-glow" />
           <h1 className="text-2xl font-black bg-gradient-to-r from-rose-300 to-pink-300 bg-clip-text text-transparent">Bingo la Negra</h1>
-          <p className="text-slate-400 text-sm">75 bolillas · en tiempo real</p>
+          <p className="text-sm subtitulo-animado credito-neon">{loginSubtitle}</p>
         </div>
         <Card>
           {mode === 'lista' ? (
@@ -2277,11 +2284,16 @@ function AdminJugadores() {
 // ===========================================================================
 function AdminConfiguracion() {
   const { user } = useAuth();
-  const { whatsappLink, refresh, logoUrl, refreshLogo } = useSettings();
+  const { whatsappLink, refresh, logoUrl, refreshLogo, loginSubtitle } = useSettings();
   const [link, setLink] = useState(whatsappLink);
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState('');
   useEffect(() => { setLink(whatsappLink); }, [whatsappLink]);
+
+  const [subtitulo, setSubtitulo] = useState(loginSubtitle);
+  const [guardandoSubtitulo, setGuardandoSubtitulo] = useState(false);
+  const [msgSubtitulo, setMsgSubtitulo] = useState('');
+  useEffect(() => { setSubtitulo(loginSubtitle); }, [loginSubtitle]);
 
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState('');
@@ -2351,6 +2363,18 @@ function AdminConfiguracion() {
     finally { setGuardando(false); }
   }
 
+  async function guardarSubtitulo() {
+    setGuardandoSubtitulo(true);
+    setMsgSubtitulo('');
+    try {
+      await apiFetch('/settings/login-subtitle', { method: 'PUT', body: JSON.stringify({ mensaje: subtitulo }) });
+      await refreshLogo();
+      setMsgSubtitulo('✅ Mensaje guardado');
+      setTimeout(() => setMsgSubtitulo(''), 2000);
+    } catch (e) { setMsgSubtitulo(e.message); }
+    finally { setGuardandoSubtitulo(false); }
+  }
+
   function elegirLogo(e) {
     const f = e.target.files[0];
     setLogoFile(f || null);
@@ -2385,6 +2409,16 @@ function AdminConfiguracion() {
         </div>
         {msg && <div className="text-sm text-emerald-400">{msg}</div>}
         <Button disabled={guardando} onClick={guardar}>{guardando ? 'Guardando...' : 'Guardar'}</Button>
+      </Card>
+
+      <Card className="space-y-3 max-w-xl">
+        <div>
+          <Label>Mensaje bajo el logo (pantalla de acceso)</Label>
+          <Input value={subtitulo} onChange={(e) => setSubtitulo(e.target.value)} placeholder="75 bolillas · en tiempo real" />
+          <p className="text-xs text-slate-500 mt-1">Aparece animado debajo del nombre, en la pantalla de acceso. Dejalo vacío para volver al mensaje por defecto.</p>
+        </div>
+        {msgSubtitulo && <div className="text-sm text-emerald-400">{msgSubtitulo}</div>}
+        <Button disabled={guardandoSubtitulo} onClick={guardarSubtitulo}>{guardandoSubtitulo ? 'Guardando...' : 'Guardar'}</Button>
       </Card>
 
       <Card className="space-y-3 max-w-xl">

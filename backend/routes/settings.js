@@ -8,6 +8,7 @@ const { requireAuth, requireAdmin } = require('../authMiddleware');
 const { r2, BUCKET, PutObjectCommand, DeleteObjectCommand } = require('../r2');
 const WHATSAPP_LIVE_DEFAULTS = require('../whatsappLiveDefaults');
 const WHATSAPP_LIVE_KEYS = Object.keys(WHATSAPP_LIVE_DEFAULTS);
+const DEFAULT_LOGIN_SUBTITLE = '75 bolillas · en tiempo real';
 
 const router = express.Router();
 
@@ -32,7 +33,10 @@ function setSetting(key, value) {
 // Config pública (sin login): la pantalla de acceso necesita el logo antes
 // de que el jugador/admin se identifique.
 router.get('/public', (req, res) => {
-  res.json({ logoUrl: getSetting('logo_path') || '' });
+  res.json({
+    logoUrl: getSetting('logo_path') || '',
+    loginSubtitle: getSetting('login_subtitle') || DEFAULT_LOGIN_SUBTITLE,
+  });
 });
 
 router.get('/whatsapp', requireAuth, (req, res) => {
@@ -44,6 +48,14 @@ router.put('/whatsapp', requireAuth, requireAdmin, (req, res) => {
   if (!link) return res.status(400).json({ error: 'Ponle un link al grupo de WhatsApp' });
   setSetting('whatsapp_link', link);
   res.json({ ok: true, link });
+});
+
+// Mensaje configurable debajo del logo en la pantalla de acceso (con
+// animación en el frontend). Vacío es válido: cae al default al leerlo.
+router.put('/login-subtitle', requireAuth, requireAdmin, (req, res) => {
+  const mensaje = typeof req.body.mensaje === 'string' ? req.body.mensaje.trim() : '';
+  setSetting('login_subtitle', mensaje);
+  res.json({ ok: true, mensaje: mensaje || DEFAULT_LOGIN_SUBTITLE });
 });
 
 // Textos/emoji configurables del módulo "WhatsApp Live" (encabezado/pie de

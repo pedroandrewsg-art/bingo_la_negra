@@ -286,5 +286,6 @@ const insertSettingSiFalta = db.prepare(
   'INSERT INTO settings (key, value) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM settings WHERE key = ?)'
 );
 Object.entries(WHATSAPP_LIVE_DEFAULTS).forEach(([key, valor]) => insertSettingSiFalta.run(key, valor, key));
+insertSettingSiFalta.run('login_subtitle', '75 bolillas · en tiempo real', 'login_subtitle');
 
 module.exports = db;

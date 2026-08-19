@@ -188,6 +188,19 @@
     0%, 100% { text-shadow: 0 0 6px currentColor, 0 0 14px currentColor, 0 0 26px #bbf7d0, 0 0 42px #4ade80; }
     50% { text-shadow: 0 0 10px currentColor, 0 0 22px currentColor, 0 0 38px #bbf7d0, 0 0 58px #4ade80; }
   }
+
+  /* Mensaje configurable bajo el logo, en la pantalla de acceso — entra con
+     un fade+slide y usa el mismo brillo neón que el crédito "Desarrollado
+     por" de abajo (clase credito-neon, ver AuthScreen). */
+  @keyframes subtituloEntrada {
+    0% { opacity: 0; transform: translateY(-6px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .subtitulo-animado {
+    display: inline-block;
+    animation: subtituloEntrada 0.6s ease-out, creditoNeonPulse 2.2s ease-in-out infinite;
+  }
+
 </style>
 </head>
 <body class="min-h-screen text-slate-100">
