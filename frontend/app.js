@@ -846,6 +846,17 @@ function AuthScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative">
       <div className="absolute top-4 right-4"><ThemeToggle /></div>
+      {mode !== 'admin' && (
+        <button
+          type="button"
+          onClick={() => { setMode('admin'); setError(''); }}
+          title="Administración"
+          aria-label="Administración"
+          className="absolute top-4 left-4 text-slate-600/40 hover:text-slate-400 hover:opacity-100 opacity-50 transition text-lg leading-none p-2"
+        >
+          🔒
+        </button>
+      )}
       <div className={`w-full ${mode === 'consulta' ? 'max-w-2xl' : 'max-w-md'}`}>
         <div className="text-center mb-6">
           <img src={logoUrl || "logo.png"} alt="Bingo la Negra" className="w-24 h-24 mx-auto mb-2 rounded-full object-cover border-2 border-bingoaccent shadow-glow" />
@@ -873,13 +884,6 @@ function AuthScreen() {
                 className="w-full mt-2 text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-xl py-2 transition"
               >
                 🧾 Consulta tus Cartones
-              </button>
-              <button
-                type="button"
-                onClick={() => { setMode('admin'); setError(''); }}
-                className="w-full mt-2 text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-xl py-2 transition"
-              >
-                💬 Administración
               </button>
             </>
           ) : (
