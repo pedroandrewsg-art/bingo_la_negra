@@ -10,7 +10,15 @@ const router = express.Router();
 
 // ---------- LOGIN ADMINISTRADOR (usuario + contraseña) ----------
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
+  // Sin esto, un pedido sin body/username (ej. un bot probando el endpoint a
+  // ciegas) llega a db.prepare(...).get(undefined) -- better-sqlite3 no puede
+  // bindear `undefined` y tira "RangeError: Too few parameter values were
+  // provided" SIN capturar, lo que tumba TODO el proceso (no solo este
+  // request) y con eso PM2 lo reinicia en loop indefinido.
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
+  }
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!user) {
     registrarLog({ user: { id: null, username } }, 'login', 'Inicio de sesión fallido', 'Usuario no existe');

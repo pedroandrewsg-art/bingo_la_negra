@@ -59,6 +59,18 @@ app.use('/api/logs', logsRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
+// Red de seguridad: un error sin capturar en CUALQUIER handler (ej. un
+// endpoint async que rechaza una promesa) por defecto tumba TODO el proceso
+// en Node, cortando a TODOS los usuarios conectados por un solo pedido malo
+// (visto en producción: un bot pegándole a /api/auth/login sin body dejó el
+// server en loop de reinicios). Loguear y seguir vivo es mucho mejor que eso.
+process.on('unhandledRejection', (err) => {
+  console.error('[server] unhandledRejection:', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[server] uncaughtException:', err);
+});
+
 attachSockets(io);
 
 const PORT = process.env.PORT || 4000;
