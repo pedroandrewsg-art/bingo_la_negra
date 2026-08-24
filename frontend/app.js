@@ -373,10 +373,15 @@ function MiniCard({ carton, onCellClick, showCercaDeGanar, letra, compact = true
         </div>
       )}
       {bloqueado && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-xl bg-slate-950/70 text-center px-2">
+        // Colores fijos por `style` (no clases de Tailwind): el tema claro
+        // reescribe text-amber-200/text-slate-300 a tonos oscuros para verse
+        // bien sobre fondos claros, pero acá el fondo del candado siempre es
+        // oscuro — con esas clases el texto quedaba casi invisible en tema
+        // claro. Mismo criterio que owner-neon-board/-text, más abajo.
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-xl text-center px-2" style={{ background: 'rgba(2,6,23,0.85)' }}>
           <span className={compact ? 'text-3xl leading-none' : 'text-5xl leading-none'}>🔒</span>
-          <span className={`font-black text-amber-200 ${compact ? 'text-[10px]' : 'text-xs'}`}>Pago pendiente</span>
-          {!compact && <span className="text-[11px] text-slate-300 leading-tight">Envía tu comprobante para ver tu cartón</span>}
+          <span className={`font-black ${compact ? 'text-[10px]' : 'text-xs'}`} style={{ color: '#fde68a' }}>Pago pendiente</span>
+          {!compact && <span className="text-[11px] leading-tight" style={{ color: '#e2e8f0' }}>Envía tu comprobante para ver tu cartón</span>}
         </div>
       )}
       </div>
