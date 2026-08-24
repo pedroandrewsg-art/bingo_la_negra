@@ -2206,6 +2206,7 @@ function AdminJugadores() {
   const [loading, setLoading] = useState(true);
   const [verCartones, setVerCartones] = useState(null);
   const [cartonesJugador, setCartonesJugador] = useState([]);
+  const [pagandoGrupo, setPagandoGrupo] = useState(null);
 
   function load() {
     setLoading(true);
@@ -2222,6 +2223,20 @@ function AdminJugadores() {
     setVerCartones(j);
     const d = await apiFetch(`/cartones/jugador/${j.id}`);
     setCartonesJugador(d.cartones);
+  }
+  // Verifica el pago de una carta puntual del jugador, sin tener que ir a
+  // buscarla dentro del sorteo — usa el mismo endpoint que "Registro de
+  // Cartas Vendidas" (por número/grupo), solo que disparado desde aquí.
+  async function marcarPagadoJugador(sorteoId, grupo) {
+    const clave = `${sorteoId}-${grupo}`;
+    setPagandoGrupo(clave);
+    try {
+      await apiFetch('/cartones/verificar-pago', { method: 'PUT', body: JSON.stringify({ sorteo_id: sorteoId, numeros: [grupo] }) });
+      const d = await apiFetch(`/cartones/jugador/${verCartones.id}`);
+      setCartonesJugador(d.cartones);
+    } finally {
+      setPagandoGrupo(null);
+    }
   }
 
   return (
@@ -2263,12 +2278,34 @@ function AdminJugadores() {
       {verCartones && (
         <Modal title={`Cartones de ${verCartones.nombre}`} onClose={() => setVerCartones(null)} wide>
           <div className="grid sm:grid-cols-2 gap-3">
-            {[...new Map(cartonesJugador.map((c) => [c.grupo, c])).keys()].map((grupo) => {
-              const cards = cartonesJugador.filter((c) => c.grupo === grupo);
-              return cards.length > 1 ? (
-                <ComboCard key={grupo} grupo={grupo} color={cards[0].color} cartones={cards} />
-              ) : (
-                <MiniCard key={grupo} carton={cards[0]} imagenUrl={cards[0].imagen_url} />
+            {/* Se agrupa por sorteo+grupo (no solo grupo) porque el mismo número
+                de carta puede repetirse en sorteos distintos. */}
+            {[...new Map(cartonesJugador.map((c) => [`${c.sorteo_id}-${c.grupo}`, c])).keys()].map((clave) => {
+              const cards = cartonesJugador.filter((c) => `${c.sorteo_id}-${c.grupo}` === clave);
+              const grupo = cards[0].grupo;
+              const sorteoId = cards[0].sorteo_id;
+              const pagado = cards.every((c) => c.estado === 'pagado');
+              return (
+                <div key={clave} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge tone={pagado ? 'green' : 'yellow'}>{pagado ? '⭐ Pagado' : '⏳ Pendiente'}</Badge>
+                    {!pagado && (
+                      <Button
+                        variant="success"
+                        className="!px-2 !py-1 !text-xs"
+                        disabled={pagandoGrupo === clave}
+                        onClick={() => marcarPagadoJugador(sorteoId, grupo)}
+                      >
+                        {pagandoGrupo === clave ? 'Verificando...' : '✅ Verificar pago'}
+                      </Button>
+                    )}
+                  </div>
+                  {cards.length > 1 ? (
+                    <ComboCard grupo={grupo} color={cards[0].color} cartones={cards} />
+                  ) : (
+                    <MiniCard carton={cards[0]} imagenUrl={cards[0].imagen_url} />
+                  )}
+                </div>
               );
             })}
             {!cartonesJugador.length && <span className="text-slate-500 text-sm">Este jugador no tiene cartones activos.</span>}
