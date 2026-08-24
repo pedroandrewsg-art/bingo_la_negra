@@ -2680,6 +2680,7 @@ function WhatsappLivePanel({ sorteoId }) {
   const [copiado, setCopiado] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState('');
+  const [pagandoGrupo, setPagandoGrupo] = useState(null);
 
   // Sin join-sorteo/leave-sorteo acá: SorteoDrawPanel (el padre) ya se
   // suscribió a la sala de este sorteo — este widget solo escucha en el mismo
@@ -2766,6 +2767,19 @@ function WhatsappLivePanel({ sorteoId }) {
     await navigator.clipboard.writeText(texto);
     setCopiado(tab);
     setTimeout(() => setCopiado(''), 1500);
+  }
+
+  // Verifica el pago de una carta directo desde la búsqueda por nombre de la
+  // "Lista de WhatsApp" — mismo endpoint que "Registro de Cartas Vendidas".
+  async function marcarPagado(grupo) {
+    setPagandoGrupo(grupo);
+    try {
+      await apiFetch('/cartones/verificar-pago', { method: 'PUT', body: JSON.stringify({ sorteo_id: sorteoId, numeros: [grupo] }) });
+      const d = await apiFetch(`/sorteos/${sorteoId}/whatsapp-live-datos`);
+      setDatos(d);
+    } finally {
+      setPagandoGrupo(null);
+    }
   }
 
   const conjuntos = datos?.conjuntos || [];
@@ -2865,6 +2879,16 @@ function WhatsappLivePanel({ sorteoId }) {
                           <span className="text-emerald-600 text-xs">{config.pagado_emoji} Pagado</span>
                         ) : (
                           <span className="text-amber-600 text-xs">{config.pendiente_emoji} Pendiente</span>
+                        )}
+                        {!g.pagado && (
+                          <Button
+                            variant="success"
+                            className="!px-2 !py-1 !text-[11px]"
+                            disabled={pagandoGrupo === g.grupo}
+                            onClick={() => marcarPagado(g.grupo)}
+                          >
+                            {pagandoGrupo === g.grupo ? '...' : '✅ Verificar pago'}
+                          </Button>
                         )}
                       </span>
                     </div>
