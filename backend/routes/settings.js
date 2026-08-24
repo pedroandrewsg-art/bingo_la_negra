@@ -36,7 +36,19 @@ router.get('/public', (req, res) => {
   res.json({
     logoUrl: getSetting('logo_path') || '',
     loginSubtitle: getSetting('login_subtitle') || DEFAULT_LOGIN_SUBTITLE,
+    bloqueoCartonesPendientes: getSetting('bloqueo_cartones_pendientes') === '1',
   });
+});
+
+// Bloqueo visual de cartones sin pago verificado: mientras está activo, la
+// consulta pública ("Consulta tu Carta") muestra el cartón "vendido"
+// (comprado pero sin que el admin confirme el pago) borroso con un candado
+// encima, en vez del cartón legible de siempre. No afecta paneles de admin
+// ni cartones ya "pagado" (ver MiniCard en el frontend).
+router.put('/bloqueo-cartones', requireAuth, requireAdmin, (req, res) => {
+  const activo = !!req.body.activo;
+  setSetting('bloqueo_cartones_pendientes', activo ? '1' : '0');
+  res.json({ ok: true, activo });
 });
 
 router.get('/whatsapp', requireAuth, (req, res) => {

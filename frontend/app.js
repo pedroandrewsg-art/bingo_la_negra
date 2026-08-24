@@ -112,6 +112,7 @@ function SettingsProvider({ children }) {
   const [whatsappLink, setWhatsappLink] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [loginSubtitle, setLoginSubtitle] = useState(DEFAULT_LOGIN_SUBTITLE);
+  const [bloqueoCartonesPendientes, setBloqueoCartonesPendientes] = useState(false);
 
   function refresh() {
     return apiFetch('/settings/whatsapp').then((d) => setWhatsappLink(d.link || ''));
@@ -122,13 +123,14 @@ function SettingsProvider({ children }) {
     return apiFetch('/settings/public').then((d) => {
       setLogoUrl(d.logoUrl || '');
       setLoginSubtitle(d.loginSubtitle || DEFAULT_LOGIN_SUBTITLE);
+      setBloqueoCartonesPendientes(!!d.bloqueoCartonesPendientes);
     });
   }
   useEffect(() => { if (token) refresh(); }, [token]);
   useEffect(refreshLogo, []);
 
   return (
-    <SettingsContext.Provider value={{ whatsappLink, refresh, logoUrl, refreshLogo, loginSubtitle }}>
+    <SettingsContext.Provider value={{ whatsappLink, refresh, logoUrl, refreshLogo, loginSubtitle, bloqueoCartonesPendientes }}>
       {children}
     </SettingsContext.Provider>
   );
@@ -309,12 +311,17 @@ function PatternGrid({ mask, size = 16 }) {
 // tamaños chicos ya afinados para caber en columnas angostas. compact=false
 // (vista "apilado" de la sala de juego): tamaños originales, más grandes y
 // cómodos de tocar, para cuando el cartón tiene todo el ancho disponible.
-function MiniCard({ carton, onCellClick, showCercaDeGanar, letra, compact = true, imagenUrl }) {
-  const { logoUrl } = useSettings();
+// `respetarBloqueo` es la señal explícita de "esta vista es de un jugador
+// (propio o consultando públicamente su carta), no de un admin" — la única
+// que debe honrar el toggle "Bloquear cartones sin pago verificado" de
+// Configuración.
+function MiniCard({ carton, onCellClick, showCercaDeGanar, letra, compact = true, imagenUrl, respetarBloqueo = false }) {
+  const { logoUrl, bloqueoCartonesPendientes } = useSettings();
   const cols = ['B', 'I', 'N', 'G', 'O'];
   const style = CARD_COLOR_STYLES[carton.color] || DEFAULT_CARD_STYLE;
   const marcadosSet = useMemo(() => new Set(carton.marcados || []), [carton.marcados]);
-  const cerca = showCercaDeGanar ? (carton.cercaDeGanar || []) : [];
+  const bloqueado = bloqueoCartonesPendientes && respetarBloqueo && carton.estado === 'vendido';
+  const cerca = (showCercaDeGanar && !bloqueado) ? (carton.cercaDeGanar || []) : [];
   const cercaNumeros = useMemo(() => new Set(cerca.flatMap((f) => f.numeros)), [cerca]);
   return (
     <div className={`bg-slate-800/70 border-2 ${style.border} rounded-xl shadow ${compact ? 'p-1.5' : 'p-2'} ${cerca.length ? 'carton-cerca' : ''}`}>
@@ -333,6 +340,7 @@ function MiniCard({ carton, onCellClick, showCercaDeGanar, letra, compact = true
           )}
         </div>
       )}
+      <div className="relative">
       {imagenUrl ? (
         // Cartón personalizado real (catálogo de imágenes del sorteo): se
         // muestra tal cual está diseñado, en su relación de aspecto natural
@@ -343,15 +351,15 @@ function MiniCard({ carton, onCellClick, showCercaDeGanar, letra, compact = true
         <img
           src={imagenUrl}
           alt={`Cartón ${carton.numero}`}
-          className={`w-full h-auto object-contain rounded-lg mt-1 bg-white ${compact ? 'max-h-56' : 'max-h-[75vh]'}`}
+          className={`w-full h-auto object-contain rounded-lg mt-1 bg-white ${compact ? 'max-h-56' : 'max-h-[75vh]'} ${bloqueado ? 'blur-sm select-none' : ''}`}
         />
       ) : (
-        <div className={`grid grid-cols-5 mt-1 ${compact ? 'gap-0.5' : 'gap-1'}`}>
+        <div className={`grid grid-cols-5 mt-1 ${compact ? 'gap-0.5' : 'gap-1'} ${bloqueado ? 'blur-sm select-none' : ''}`}>
           {cols.map((c) => <div key={c} className={`text-center font-black text-rose-400 ${compact ? 'text-[10px]' : 'text-xs'}`}>{c}</div>)}
           {carton.grid.map((row, r) => row.map((val, c) => {
             const shown = val === null || marcadosSet.has(val);
             const esCercaCelda = !shown && cercaNumeros.has(val);
-            const clickable = !!onCellClick && val !== null;
+            const clickable = !!onCellClick && val !== null && !bloqueado;
             const Tag = clickable ? 'button' : 'div';
             return (
               <Tag key={r + '-' + c}
@@ -364,6 +372,14 @@ function MiniCard({ carton, onCellClick, showCercaDeGanar, letra, compact = true
           }))}
         </div>
       )}
+      {bloqueado && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-xl bg-slate-950/70 text-center px-2">
+          <span className={compact ? 'text-3xl leading-none' : 'text-5xl leading-none'}>🔒</span>
+          <span className={`font-black text-amber-200 ${compact ? 'text-[10px]' : 'text-xs'}`}>Pago pendiente</span>
+          {!compact && <span className="text-[11px] text-slate-300 leading-tight">Envía tu comprobante para ver tu cartón</span>}
+        </div>
+      )}
+      </div>
       {cerca.length > 0 && (
         <div className="mt-1.5 text-[11px] text-amber-300 font-semibold space-y-0.5">
           {cerca.map((f, i) => <div key={i}>⚡ Esperando: {f.label} (falta {f.numeros.join(' o ')})</div>)}
@@ -378,7 +394,7 @@ const LETRAS = ['A', 'B', 'C', 'D'];
 // "Carta" agrupada: varios cartones de un mismo combo (grupo) presentados
 // juntos como una sola unidad visual, cada cartón identificado por su letra
 // (A, B, C, D) en vez de su número físico individual.
-function ComboCard({ grupo, color, cartones, onCellClick, showCercaDeGanar, compact = true }) {
+function ComboCard({ grupo, color, cartones, onCellClick, showCercaDeGanar, compact = true, respetarBloqueo = false }) {
   const style = CARD_COLOR_STYLES[color] || DEFAULT_CARD_STYLE;
   return (
     <div className={`rounded-2xl border-2 ${style.border} bg-slate-900/60 shadow-glow overflow-hidden`}>
@@ -407,6 +423,7 @@ function ComboCard({ grupo, color, cartones, onCellClick, showCercaDeGanar, comp
             letra={c.letra || LETRAS[i]}
             onCellClick={onCellClick ? (n) => onCellClick(c, n) : undefined}
             showCercaDeGanar={showCercaDeGanar}
+            respetarBloqueo={respetarBloqueo}
             compact={compact}
             imagenUrl={c.imagen_url}
           />
@@ -606,6 +623,7 @@ async function descargarCarton(cartones, grupo, sorteoColor) {
 // combo, se busca por número de carta y se muestra/descarga completa (todos
 // sus cartones juntos, sin separarlos).
 function ConsultaCartonesPanel({ onVolver }) {
+  const { bloqueoCartonesPendientes } = useSettings();
   const [sorteosPublicos, setSorteosPublicos] = useState(null);
   const [sorteoElegido, setSorteoElegido] = useState(null);
   const [metodo, setMetodo] = useState('numero'); // 'numero' | 'nombre'
@@ -617,6 +635,8 @@ function ConsultaCartonesPanel({ onVolver }) {
   const [sorteoNombre, setSorteoNombre] = useState(null);
   const [resultadosNombre, setResultadosNombre] = useState(null);
   const [personaElegida, setPersonaElegida] = useState(null);
+  const numeroBuscadoRef = useRef(''); // último valor efectivamente buscado (no el input en vivo, que puede diferir sin haber tocado "Consultar")
+  const nombreBuscadoRef = useRef('');
 
   useEffect(() => {
     apiFetch('/sorteos/publicos').then((d) => {
@@ -624,6 +644,35 @@ function ConsultaCartonesPanel({ onVolver }) {
       if (d.sorteos.length === 1) setSorteoElegido(d.sorteos[0].id);
     });
   }, []);
+
+  // Sin esto, un cartón bloqueado (pago pendiente) quedaba borroso para
+  // siempre hasta que la persona volviera a buscar a mano: esta pantalla es
+  // pública/sin login y no tenía ningún listener de socket. Re-consulta en
+  // silencio (sin tocar `loading`, para no hacer parpadear la UI) apenas el
+  // admin confirma el pago de este sorteo — así se desbloquea solo.
+  useEffect(() => {
+    if (!sorteoElegido) return;
+    socket.emit('join-sorteo', { sorteoId: sorteoElegido });
+    const onCambio = (p) => {
+      if (p.sorteoId != sorteoElegido) return;
+      if (resultado && numeroBuscadoRef.current) {
+        const params = new URLSearchParams({ sorteo_id: sorteoElegido, numero: numeroBuscadoRef.current });
+        apiFetch('/cartones/consulta?' + params.toString()).then((d) => { if (d.encontrado) setResultado(d); }).catch(() => {});
+      }
+      if (personaElegida) {
+        const params = new URLSearchParams({ sorteo_id: sorteoElegido, nombre: nombreBuscadoRef.current });
+        apiFetch('/cartones/consulta-nombre?' + params.toString()).then((d) => {
+          const fresca = d.resultados.find((p) => p.jugador_id === personaElegida.jugador_id);
+          if (fresca) setPersonaElegida(fresca);
+        }).catch(() => {});
+      }
+    };
+    socket.on('cartones-actualizados', onCambio);
+    return () => {
+      socket.emit('leave-sorteo', { sorteoId: sorteoElegido });
+      socket.off('cartones-actualizados', onCambio);
+    };
+  }, [sorteoElegido, resultado, personaElegida]);
 
   function cambiarMetodo(m) {
     setMetodo(m);
@@ -638,6 +687,7 @@ function ConsultaCartonesPanel({ onVolver }) {
     setError('');
     setResultado(null);
     setLoading(true);
+    numeroBuscadoRef.current = numero.trim();
     try {
       const params = new URLSearchParams({ sorteo_id: sorteoElegido, numero: numero.trim() });
       const d = await apiFetch('/cartones/consulta?' + params.toString());
@@ -656,6 +706,7 @@ function ConsultaCartonesPanel({ onVolver }) {
     setResultadosNombre(null);
     setPersonaElegida(null);
     setLoading(true);
+    nombreBuscadoRef.current = nombreQuery.trim();
     try {
       const params = new URLSearchParams({ sorteo_id: sorteoElegido, nombre: nombreQuery.trim() });
       const d = await apiFetch('/cartones/consulta-nombre?' + params.toString());
@@ -752,15 +803,19 @@ function ConsultaCartonesPanel({ onVolver }) {
             </div>
           </div>
           {resultado.cartones.length > 1
-            ? <ComboCard grupo={resultado.cartones[0].grupo} color={resultado.cartones[0].color} cartones={resultado.cartones} compact={false} />
-            : <MiniCard carton={resultado.cartones[0]} letra={resultado.cartones[0].letra} imagenUrl={resultado.cartones[0].imagen_url} compact={false} />}
-          <Button
-            variant="ghost"
-            className="w-full"
-            onClick={() => descargarCarton(resultado.cartones, resultado.cartones[0].grupo, resultado.sorteo.color)}
-          >
-            ⬇ Descargar
-          </Button>
+            ? <ComboCard grupo={resultado.cartones[0].grupo} color={resultado.cartones[0].color} cartones={resultado.cartones} compact={false} respetarBloqueo />
+            : <MiniCard carton={resultado.cartones[0]} letra={resultado.cartones[0].letra} imagenUrl={resultado.cartones[0].imagen_url} compact={false} respetarBloqueo />}
+          {/* Sin descarga mientras esté bloqueado — el PNG se genera aparte
+              del DOM (no hereda el blur), así que mostraría el cartón limpio. */}
+          {!(bloqueoCartonesPendientes && resultado.cartones[0]?.estado === 'vendido') && (
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => descargarCarton(resultado.cartones, resultado.cartones[0].grupo, resultado.sorteo.color)}
+            >
+              ⬇ Descargar
+            </Button>
+          )}
         </div>
       )}
 
@@ -797,15 +852,17 @@ function ConsultaCartonesPanel({ onVolver }) {
           {personaElegida.grupos.map((g) => (
             <div key={g.grupo} className="space-y-2">
               {g.cartones.length > 1
-                ? <ComboCard grupo={g.grupo} color={g.cartones[0].color} cartones={g.cartones} compact={false} />
-                : <MiniCard carton={g.cartones[0]} letra={g.cartones[0].letra} imagenUrl={g.cartones[0].imagen_url} compact={false} />}
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={() => descargarCarton(g.cartones, g.grupo, sorteoNombre.color)}
-              >
-                ⬇ Descargar
-              </Button>
+                ? <ComboCard grupo={g.grupo} color={g.cartones[0].color} cartones={g.cartones} compact={false} respetarBloqueo />
+                : <MiniCard carton={g.cartones[0]} letra={g.cartones[0].letra} imagenUrl={g.cartones[0].imagen_url} compact={false} respetarBloqueo />}
+              {!(bloqueoCartonesPendientes && g.cartones[0]?.estado === 'vendido') && (
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => descargarCarton(g.cartones, g.grupo, sorteoNombre.color)}
+                >
+                  ⬇ Descargar
+                </Button>
+              )}
             </div>
           ))}
           {resultadosNombre && resultadosNombre.length > 1 && (
@@ -2321,7 +2378,9 @@ function AdminJugadores() {
 // ===========================================================================
 function AdminConfiguracion() {
   const { user } = useAuth();
-  const { whatsappLink, refresh, logoUrl, refreshLogo, loginSubtitle } = useSettings();
+  const { whatsappLink, refresh, logoUrl, refreshLogo, loginSubtitle, bloqueoCartonesPendientes } = useSettings();
+  const [guardandoBloqueo, setGuardandoBloqueo] = useState(false);
+  const [msgBloqueo, setMsgBloqueo] = useState('');
   const [link, setLink] = useState(whatsappLink);
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState('');
@@ -2418,6 +2477,17 @@ function AdminConfiguracion() {
     setLogoPreview(f ? URL.createObjectURL(f) : '');
   }
 
+  async function alternarBloqueo() {
+    if (guardandoBloqueo) return;
+    setGuardandoBloqueo(true);
+    setMsgBloqueo('');
+    try {
+      await apiFetch('/settings/bloqueo-cartones', { method: 'PUT', body: JSON.stringify({ activo: !bloqueoCartonesPendientes }) });
+      await refreshLogo();
+    } catch (e) { setMsgBloqueo(e.message); }
+    finally { setGuardandoBloqueo(false); }
+  }
+
   async function subirLogo() {
     if (!logoFile) return;
     setSubiendoLogo(true);
@@ -2469,6 +2539,27 @@ function AdminConfiguracion() {
         </div>
         {msgLogo && <div className="text-sm text-emerald-400">{msgLogo}</div>}
         <Button disabled={!logoFile || subiendoLogo} onClick={subirLogo}>{subiendoLogo ? 'Subiendo...' : 'Subir logo'}</Button>
+      </Card>
+
+      <Card className="space-y-3 max-w-xl">
+        <div>
+          <Label>🔒 Bloquear cartones sin pago verificado</Label>
+          <p className="text-xs text-slate-500 mt-1">
+            Si lo activás, "Consulta tu Carta" muestra el cartón recién comprado (pago sin confirmar) borroso con un candado, con aviso de que debe pagar para verlo. Apenas confirmás el pago, se desbloquea solo.
+          </p>
+        </div>
+        {msgBloqueo && <div className="text-sm text-red-400">{msgBloqueo}</div>}
+        <button
+          type="button"
+          disabled={guardandoBloqueo}
+          onClick={alternarBloqueo}
+          className={`w-full flex items-center gap-3 text-left rounded-xl border-2 py-2.5 px-3 transition disabled:opacity-60 ${bloqueoCartonesPendientes ? 'border-bingoaccent bg-bingopurple/10' : 'border-slate-700 hover:border-slate-600'}`}
+        >
+          <span className={`shrink-0 w-11 h-6 rounded-full relative transition ${bloqueoCartonesPendientes ? 'bg-bingoaccent' : 'bg-slate-700'}`}>
+            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${bloqueoCartonesPendientes ? 'left-5' : 'left-0.5'}`} />
+          </span>
+          <span className="text-sm font-semibold text-slate-200">{bloqueoCartonesPendientes ? 'Activado' : 'Desactivado'}</span>
+        </button>
       </Card>
 
       <Card className="space-y-3 max-w-xl">
