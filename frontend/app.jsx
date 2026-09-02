@@ -3255,6 +3255,10 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
   useEffect(() => { apiFetch('/sorteos/patrones').then((d) => setPatrones(d.patrones)); }, []);
   const [cartones, setCartones] = useState([]);
   const [ganadores, setGanadores] = useState([]);
+  // Los avisos de "¡BINGO!" se ocultan solos a los 30s (o antes con la ×) para
+  // que no se queden estorbando la pantalla mientras se sigue jugando.
+  function ocultarGanador(ganadorId) { setGanadores((prev) => prev.filter((g) => g.ganadorId !== ganadorId)); }
+  function programarAutoOcultar(ganadorId) { setTimeout(() => ocultarGanador(ganadorId), 30000); }
   const [reclamos, setReclamos] = useState([]);
   const [avisosReclamo, setAvisosReclamo] = useState([]); // avisos grandes de reclamos nuevos, sin confirmar
   const [confirmInvalidar, setConfirmInvalidar] = useState(null); // reclamo pendiente de confirmar en el modal de invalidar (null = cerrado)
@@ -3380,7 +3384,11 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
         ganadasVistasRef.current = new Set((d.sorteo.figuras || []).flatMap((f) => (f.ganadores || []).map((g) => g.ganadorId)));
       } else if (nuevos.length) {
         nuevos.forEach((g) => ganadasVistasRef.current.add(g.ganadorId));
-        setGanadores((prev) => [...prev, ...nuevos.filter((g) => !prev.some((p) => p.ganadorId === g.ganadorId))]);
+        setGanadores((prev) => {
+          const agregados = nuevos.filter((g) => !prev.some((p) => p.ganadorId === g.ganadorId));
+          agregados.forEach((g) => programarAutoOcultar(g.ganadorId));
+          return [...prev, ...agregados];
+        });
       }
     });
     apiFetch('/cartones?sorteo_id=' + sorteoId).then((d) => setCartones(d.cartones.filter((c) => c.estado !== 'disponible')));
@@ -3465,6 +3473,7 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
       if (ganadasVistasRef.current?.has(p.ganadorId)) return loadAll();
       ganadasVistasRef.current?.add(p.ganadorId);
       setGanadores((g) => [...g, p]);
+      programarAutoOcultar(p.ganadorId);
       loadAll();
     };
     const onReclamo = (p) => {
@@ -3786,7 +3795,8 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
       {ganadores.length > 0 && (
         <div className="space-y-2">
           {ganadores.map((g, i) => (
-            <Card key={i} className="border-emerald-500/60 bg-emerald-500/10 text-center">
+            <Card key={i} className="border-emerald-500/60 bg-emerald-500/10 text-center relative">
+              <button onClick={() => ocultarGanador(g.ganadorId)} className="absolute top-2 right-2 text-emerald-300/70 hover:text-emerald-100 text-lg leading-none" title="Ocultar aviso">&times;</button>
               <div className="text-2xl font-black text-emerald-300">🎉 ¡BINGO! 🎉</div>
               <div className="text-slate-200 mt-1">
                 Figura <b>{sorteo.figuras.find((f) => f.patron === g.patron)?.label || g.patron}</b> — Ganador: <b>{g.usuario}</b>{g.jugadoPorNombre && <span className="text-amber-300"> (JUGADO POR {g.jugadoPorNombre})</span>} — Cartón #{g.cartonNumero} — Premio {money(g.premio)}
