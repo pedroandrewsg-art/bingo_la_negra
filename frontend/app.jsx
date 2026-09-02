@@ -1726,17 +1726,31 @@ function ThemeToggle() {
 }
 
 // Matriz 5x5 de vista previa de un patrón/figura
-function PatternGrid({ mask, size = 16 }) {
+// `badge`: marca chica en la esquina para distinguir visualmente figuras que
+// comparten la misma máscara que otra (hoy solo carton_lleno_picado, cuya
+// máscara es igual a carton_lleno a propósito -- misma figura, ronda
+// distinta) -- sin este badge, las dos se ven como el mismo cuadrito lleno.
+function PatternGrid({ mask, size = 16, badge }) {
   if (!mask) return null;
   return (
-    <div className="grid grid-cols-5 gap-0.5 inline-grid">
-      {mask.map((row, r) => row.map((v, c) => (
-        <div key={r + '-' + c} style={{ width: size, height: size }}
-          className={`rounded-sm ${v ? 'bg-gradient-to-br from-bingopurple to-bingoaccent' : 'bg-slate-700/60'}`} />
-      )))}
+    <div className="relative inline-block">
+      <div className="grid grid-cols-5 gap-0.5 inline-grid">
+        {mask.map((row, r) => row.map((v, c) => (
+          <div key={r + '-' + c} style={{ width: size, height: size }}
+            className={`rounded-sm ${v ? 'bg-gradient-to-br from-bingopurple to-bingoaccent' : 'bg-slate-700/60'}`} />
+        )))}
+      </div>
+      {badge && (
+        <span className="absolute -top-1.5 -right-1.5 text-[10px] leading-none bg-amber-400 text-slate-900 rounded-full w-3.5 h-3.5 flex items-center justify-center font-black shadow">{badge}</span>
+      )}
     </div>
   );
 }
+
+// Único caso hoy: carton_lleno_picado reusa la máscara de carton_lleno
+// (misma figura física, ronda extra) -- este badge es lo que las distingue
+// a simple vista en cualquier listado.
+function badgeDePatron(patron) { return patron === 'carton_lleno_picado' ? '2' : null; }
 
 // Miniatura de un cartón de bingo. El marcado real vive en carton.marcados
 // (persistido en el servidor — ya no hay sorteador automático que "cante"
@@ -3045,7 +3059,7 @@ function AdminSorteos() {
                   return (
                     <div key={p.key} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 border ${fig ? 'border-bingoaccent bg-bingopurple/10' : 'border-transparent'}`}>
                       <input type="checkbox" checked={!!fig} onChange={() => toggleFigura(p.key)} className="accent-bingoaccent" />
-                      <PatternGrid mask={p.preview} size={12} />
+                      <PatternGrid mask={p.preview} size={12} badge={badgeDePatron(p.key)} />
                       <span className="text-sm flex-1">{p.label}</span>
                       {p.personalizada && (
                         <button type="button" onClick={() => borrarFigura(p.key)} className="text-xs text-red-400 hover:text-red-300" title="Eliminar figura">🗑️</button>
@@ -3184,7 +3198,7 @@ function AdminSorteos() {
                         <div className="flex flex-col gap-1">
                           {(s.figuras || []).map((f) => (
                             <div key={f.patron} className="flex items-center gap-1.5">
-                              <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} />
+                              <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} badge={badgeDePatron(f.patron)} />
                               <span className="text-xs text-slate-400">
                                 {f.label} ({s.modo_premio === 'monto_fijo' ? money(f.monto) : s.modo_premio === 'sin_premio' ? 'sin monto' : `${f.porcentaje}%`}){f.ganada ? ' ✅' : ''}
                               </span>
@@ -3231,7 +3245,7 @@ function AdminSorteos() {
                 <div className="flex flex-col gap-1">
                   {(s.figuras || []).map((f) => (
                     <div key={f.patron} className="flex items-center gap-1.5">
-                      <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} />
+                      <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} badge={badgeDePatron(f.patron)} />
                       <span className="text-xs text-slate-400">
                         {f.label} ({s.modo_premio === 'monto_fijo' ? money(f.monto) : s.modo_premio === 'sin_premio' ? 'sin monto' : `${f.porcentaje}%`}){f.ganada ? ' ✅' : ''}
                       </span>
@@ -5718,7 +5732,7 @@ function UserJugar() {
           <div className="flex flex-col gap-1">
             {(sorteoSel.figuras || []).map((f) => (
               <div key={f.patron} className="flex items-center gap-1.5 text-sm text-slate-300">
-                <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} />
+                <PatternGrid mask={patrones.find((p) => p.key === f.patron)?.preview} size={8} badge={badgeDePatron(f.patron)} />
                 <span>{f.label} · {money(f.premio)}</span>
               </div>
             ))}
@@ -5904,7 +5918,7 @@ function UserJugar() {
                         </button>
                         {abierta && f.preview && (
                           <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-2">
-                            <PatternGrid mask={f.preview} size={14} />
+                            <PatternGrid mask={f.preview} size={14} badge={badgeDePatron(f.patron)} />
                           </div>
                         )}
                       </div>
