@@ -83,6 +83,23 @@ const PATTERNS = {
       [1, 1, 1, 1, 1],
     ],
   },
+  // "Picado": ronda extra de Cartón Lleno que se juega después de que alguien
+  // completa el Cartón Lleno original, solo entre quienes no ganaron esa
+  // ronda (los que "quedaron picados"). Misma máscara que carton_lleno, pero
+  // con clave propia -- así reclamos/ganadores no se confunden entre las dos
+  // rondas. La dependencia (no se puede ganar antes que carton_lleno) vive en
+  // DEPENDENCIAS_FIGURAS, routes/sorteos.js.
+  carton_lleno_picado: {
+    label: 'Cartón Lleno (Picado)',
+    type: 'fixed',
+    mask: [
+      [1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1],
+    ],
+  },
 };
 
 function maskCells(mask) {

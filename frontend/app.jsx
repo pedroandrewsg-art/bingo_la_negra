@@ -16,6 +16,12 @@ const COLORS = [
 ];
 const COMBOS = [1, 2, 3, 4];
 
+// Espejo de DEPENDENCIAS_FIGURAS en backend/routes/sorteos.js: "Picado" solo
+// se puede elegir si también se elige su figura base (Cartón Lleno) -- se
+// valida acá además de en el servidor para dar el error al instante, antes
+// de mandar el form.
+const DEPENDENCIAS_FIGURAS = { carton_lleno_picado: 'carton_lleno' };
+
 // Estilo decorativo de cartón según el color asignado al sorteo/lote — NO
 // es el tema visual (ver CARD_THEMES): esto solo define la "bolita" de los
 // números marcados (style.mark) y, en modo "Sin tema", también el borde y
@@ -2929,6 +2935,14 @@ function AdminSorteos() {
       setError('Cada figura debe tener un monto en Bs mayor a 0.');
       return;
     }
+    const patronesElegidos = new Set(form.figuras.map((f) => f.patron));
+    for (const f of form.figuras) {
+      const base = DEPENDENCIAS_FIGURAS[f.patron];
+      if (base && !patronesElegidos.has(base)) {
+        setError(`Para jugar "${patrones.find((p) => p.key === f.patron)?.label || f.patron}" primero debes elegir "${patrones.find((p) => p.key === base)?.label || base}".`);
+        return;
+      }
+    }
     try {
       await apiFetch('/sorteos', { method: 'POST', body: JSON.stringify(form) });
       setShowForm(false);
@@ -3326,6 +3340,13 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
   }
   async function guardarFiguras() {
     setFigurasError('');
+    for (const f of figurasEdit) {
+      const base = DEPENDENCIAS_FIGURAS[f.patron];
+      if (base && !patronesUsadosEdit.has(base)) {
+        setFigurasError(`Para jugar "${patrones.find((p) => p.key === f.patron)?.label || f.patron}" primero debes elegir "${patrones.find((p) => p.key === base)?.label || base}".`);
+        return;
+      }
+    }
     setGuardandoFiguras(true);
     try {
       const body = figurasEdit.map((f) => ({
@@ -3998,6 +4019,8 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
                 </div>
                 {f.cerrada ? (
                   <span className="text-xs text-slate-500 font-semibold shrink-0">🔒 Cerrada</span>
+                ) : f.bloqueada ? (
+                  <span className="text-xs text-slate-500 font-semibold shrink-0">🔒 Se activa tras {f.activaTrasLabel}</span>
                 ) : (
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs text-amber-400">⏳ En juego{f.ganada ? ` · ${f.ganadores.length} ganador${f.ganadores.length > 1 ? 'es' : ''}` : ''}</span>
@@ -5872,10 +5895,12 @@ function UserJugar() {
                           className={`text-xs px-2.5 py-1 rounded-full border transition ${
                             f.ganada
                               ? 'bg-slate-800/40 border-slate-700 text-slate-500 line-through'
+                              : f.bloqueada
+                              ? 'bg-slate-800/20 border-slate-700/60 text-slate-500'
                               : 'bg-bingopurple/20 border-bingopurple/40 text-fuchsia-200 hover:bg-bingopurple/30'
                           }`}
                         >
-                          {f.label}{f.ganada ? ` · ${f.ganador?.jugador || ''}` : ' · en juego'} {abierta ? '▲' : '▼'}
+                          {f.label}{f.ganada ? ` · ${f.ganador?.jugador || ''}` : f.bloqueada ? ` · 🔒 tras ${f.activaTrasLabel}` : ' · en juego'} {abierta ? '▲' : '▼'}
                         </button>
                         {abierta && f.preview && (
                           <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-2">

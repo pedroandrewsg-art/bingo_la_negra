@@ -4,10 +4,19 @@ const db = require('../db');
 const { requireAuth, requireAdmin } = require('../authMiddleware');
 const { generateUniqueCards } = require('../cardGenerator');
 const { getPatternDef, checkPattern, buildMarkedMatrix, nearWinNumbers, celdasGanadoras } = require('../patterns');
-const { figurasActivas, computeStats } = require('./sorteos');
+const { figurasActivas, computeStats, activaTrasDe } = require('./sorteos');
 const { registrarLog } = require('../logActividad');
 
 const router = express.Router();
+
+// ¿Este jugador ya ganó `patron` en este sorteo? Se usa para excluirlo de las
+// figuras que dependen de esa (ej. quien pegó Cartón Lleno no compite en el
+// Picado) -- exclusión a nivel jugador completo: si tiene más cartones, esos
+// también quedan fuera de la figura dependiente, no solo el que ganó.
+function jugadorGanoPatron(sorteoId, patron, jugadorId) {
+  if (!jugadorId) return false;
+  return !!db.prepare('SELECT 1 FROM ganadores WHERE sorteo_id = ? AND patron = ? AND jugador_id = ?').get(sorteoId, patron, jugadorId);
+}
 
 function parseCard(c) {
   return { ...c, grid: JSON.parse(c.grid), marcados: JSON.parse(c.marcados) };
@@ -34,6 +43,8 @@ function cercaDeGanar(carton, activos) {
   const marcadosSet = new Set(JSON.parse(carton.marcados));
   const out = [];
   for (const patron of activos) {
+    const base = activaTrasDe(patron);
+    if (base && jugadorGanoPatron(carton.sorteo_id, base, carton.owner_id)) continue; // "quedó picado": ya ganó la figura base, no compite acá
     const matrix = buildMarkedMatrix(grid, marcadosSet);
     if (checkPattern(patron, matrix)) continue; // ya lo completó (reclamo aparte)
     const numeros = nearWinNumbers(patron, grid, marcadosSet);
@@ -53,6 +64,8 @@ function evaluarReclamos(carton, sorteoId, io) {
   const matrix = buildMarkedMatrix(grid, marcadosSet);
   const activos = figurasActivas(sorteoId);
   for (const patron of activos) {
+    const base = activaTrasDe(patron);
+    if (base && jugadorGanoPatron(sorteoId, base, carton.owner_id)) continue; // "quedó picado": ya ganó la figura base, no compite acá
     if (!checkPattern(patron, matrix)) continue;
     const existe = db
       .prepare('SELECT id FROM reclamos WHERE carton_id = ? AND patron = ?')
@@ -825,7 +838,11 @@ router.post('/bingo-manual', requireAuth, requireAdmin, (req, res) => {
   if (!carton) return res.status(404).json({ error: 'Ese cartón no pertenece a este sorteo' });
 
   if (!figurasActivas(sorteo_id).includes(patron)) {
-    return res.status(400).json({ error: 'Esa figura ya fue ganada o no pertenece a este sorteo' });
+    return res.status(400).json({ error: 'Esa figura ya fue ganada, todavía no se activa, o no pertenece a este sorteo' });
+  }
+  const baseManual = activaTrasDe(patron);
+  if (baseManual && jugadorGanoPatron(Number(sorteo_id), baseManual, carton.owner_id)) {
+    return res.status(400).json({ error: 'Este jugador ya ganó la figura base y no participa del Picado' });
   }
 
   // El admin "dibuja" a mano los números marcados del cartón de papel; se

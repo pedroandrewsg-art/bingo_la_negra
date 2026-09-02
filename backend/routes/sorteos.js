@@ -9,6 +9,14 @@ const { registrarLog, registrarLogAgrupado } = require('../logActividad');
 
 const router = express.Router();
 
+// Mapa de dependencias entre figuras: la clave solo se puede ganar después de
+// que la figura que apunta ya tenga al menos un ganador en el sorteo. Hoy la
+// única figura así es "Picado" (Cartón Lleno extra, jugado después del
+// Cartón Lleno original) -- se deja como mapa, no un booleano suelto, por si
+// en el futuro se agrega otra figura con la misma necesidad.
+const DEPENDENCIAS_FIGURAS = { carton_lleno_picado: 'carton_lleno' };
+function activaTrasDe(patron) { return DEPENDENCIAS_FIGURAS[patron] || null; }
+
 // Encabezado/pie de página se guardan también acá (fuera de la tabla sorteos)
 // para que sobrevivan aunque se elimine el sorteo — así el admin no tiene que
 // volver a escribirlos cada vez que arma un sorteo nuevo.
@@ -87,7 +95,7 @@ function computeStats(sorteoId) {
     .get(sorteoId).s;
 
   const figurasRows = db
-    .prepare('SELECT patron, porcentaje, monto, cerrada FROM sorteo_patrones WHERE sorteo_id = ? ORDER BY orden ASC, id ASC')
+    .prepare('SELECT patron, porcentaje, monto, cerrada, activa_tras FROM sorteo_patrones WHERE sorteo_id = ? ORDER BY orden ASC, id ASC')
     .all(sorteoId);
 
   // La ganancia del admin depende del modo de premio del sorteo:
@@ -139,6 +147,9 @@ function computeStats(sorteoId) {
     const premio = sorteo.modo_premio === 'monto_fijo' ? +(f.monto || 0).toFixed(2)
       : sorteo.modo_premio === 'sin_premio' ? 0
       : +(premioAcumulado * (f.porcentaje / 100)).toFixed(2);
+    // "Bloqueada": tiene una figura base (activa_tras) que todavía no tiene
+    // ningún ganador -- no acepta reclamos hasta entonces (ver figurasActivas).
+    const bloqueada = !!f.activa_tras && !ganadoresPorPatron.has(f.activa_tras);
     return {
       patron: f.patron,
       label: patronesCatalogo.get(f.patron)?.label || f.patron,
@@ -147,6 +158,9 @@ function computeStats(sorteoId) {
       monto: f.monto,
       premio,
       cerrada: !!f.cerrada,
+      activaTras: f.activa_tras || null,
+      activaTrasLabel: f.activa_tras ? (patronesCatalogo.get(f.activa_tras)?.label || f.activa_tras) : null,
+      bloqueada,
       ganada: ganadoresFigura.length > 0,
       // Se mantiene `ganador` (singular, el primero) por compatibilidad con
       // código que todavía no fue migrado a la lista; el frontend nuevo usa `ganadores`.
@@ -194,9 +208,18 @@ function computeStats(sorteoId) {
 // uno o más ganadores — varios jugadores pueden pegar bingo legítimamente en
 // la misma figura (bingo "corrido") — hasta que el admin la cierra a mano
 // con "Cerrar figura" (columna `cerrada`).
+// Una figura con `activa_tras` (ej. "Picado") solo cuenta como activa una vez
+// que la figura de la que depende ya tiene al menos un ganador registrado --
+// así nadie puede reclamarla antes de tiempo (ver DEPENDENCIAS_FIGURAS arriba).
 function figurasActivas(sorteoId) {
   return db
-    .prepare('SELECT patron FROM sorteo_patrones WHERE sorteo_id = ? AND cerrada = 0')
+    .prepare(
+      `SELECT sp.patron FROM sorteo_patrones sp
+       WHERE sp.sorteo_id = ? AND sp.cerrada = 0
+         AND (sp.activa_tras IS NULL OR EXISTS (
+           SELECT 1 FROM ganadores g WHERE g.sorteo_id = sp.sorteo_id AND g.patron = sp.activa_tras
+         ))`
+    )
     .all(sorteoId)
     .map((r) => r.patron);
 }
@@ -257,6 +280,8 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
     return res.status(400).json({ error: `Ya hay un sorteo activo (#${yaActivo.id}, ${yaActivo.fecha_hora}). Debes finalizarlo o eliminarlo antes de crear uno nuevo.` });
   }
   const patronesValidos = new Set(listPatterns().map((p) => p.key));
+  const patronesCatalogo = new Map(listPatterns().map((p) => [p.key, p]));
+  const patronesElegidos = new Set(figuras.map((f) => f.patron));
   for (const f of figuras) {
     if (!patronesValidos.has(f.patron)) return res.status(400).json({ error: `Patrón inválido: ${f.patron}` });
     if (modoPremio === 'porcentaje' && (typeof f.porcentaje !== 'number' || f.porcentaje <= 0)) {
@@ -264,6 +289,10 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
     }
     if (modoPremio === 'monto_fijo' && (typeof f.monto !== 'number' || f.monto <= 0)) {
       return res.status(400).json({ error: 'Cada figura debe tener un monto en Bs mayor a 0' });
+    }
+    const base = activaTrasDe(f.patron);
+    if (base && !patronesElegidos.has(base)) {
+      return res.status(400).json({ error: `Para jugar "${patronesCatalogo.get(f.patron)?.label || f.patron}" primero debes elegir "${patronesCatalogo.get(base)?.label || base}"` });
     }
   }
   if (modoPremio === 'porcentaje') {
@@ -292,8 +321,8 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
     .run(fecha_hora, desde, hasta, color, tipo_venta, costo, porcentaje_ganancia, modoPremio, figuras[0].patron, getSetting('default_encabezado'), getSetting('default_pie_pagina'), ventasHabilitadas);
   const sorteoId = info.lastInsertRowid;
 
-  const insertFigura = db.prepare('INSERT INTO sorteo_patrones (sorteo_id, patron, porcentaje, monto, orden) VALUES (?, ?, ?, ?, ?)');
-  figuras.forEach((f, i) => insertFigura.run(sorteoId, f.patron, f.porcentaje || 0, f.monto != null ? f.monto : null, i));
+  const insertFigura = db.prepare('INSERT INTO sorteo_patrones (sorteo_id, patron, porcentaje, monto, orden, activa_tras) VALUES (?, ?, ?, ?, ?, ?)');
+  figuras.forEach((f, i) => insertFigura.run(sorteoId, f.patron, f.porcentaje || 0, f.monto != null ? f.monto : null, i, activaTrasDe(f.patron)));
 
   try {
     const plantillas = obtenerPlantillas(color, tipo_venta, desde, hasta);
@@ -442,6 +471,8 @@ router.put('/:id/figuras', requireAuth, requireAdmin, (req, res) => {
   const ganadasRows = db.prepare('SELECT * FROM sorteo_patrones WHERE sorteo_id = ?').all(id).filter((r) => ganadasSet.has(r.patron));
 
   const patronesValidos = new Set(listPatterns().map((p) => p.key));
+  const patronesCatalogo = new Map(listPatterns().map((p) => [p.key, p]));
+  const patronesTotales = new Set([...figuras.map((f) => f.patron), ...ganadasRows.map((r) => r.patron)]);
   const vistos = new Set();
   for (const f of figuras) {
     if (!patronesValidos.has(f.patron)) return res.status(400).json({ error: `Patrón inválido: ${f.patron}` });
@@ -453,6 +484,10 @@ router.put('/:id/figuras', requireAuth, requireAdmin, (req, res) => {
     }
     if (sorteo.modo_premio === 'monto_fijo' && (typeof f.monto !== 'number' || f.monto <= 0)) {
       return res.status(400).json({ error: 'Cada figura debe tener un monto en Bs mayor a 0' });
+    }
+    const base = activaTrasDe(f.patron);
+    if (base && !patronesTotales.has(base)) {
+      return res.status(400).json({ error: `Para jugar "${patronesCatalogo.get(f.patron)?.label || f.patron}" primero debes elegir "${patronesCatalogo.get(base)?.label || base}"` });
     }
   }
   if (!figuras.length && !ganadasRows.length) {
@@ -471,9 +506,9 @@ router.put('/:id/figuras', requireAuth, requireAdmin, (req, res) => {
     const actuales = db.prepare('SELECT patron FROM sorteo_patrones WHERE sorteo_id = ?').all(id);
     const delStmt = db.prepare('DELETE FROM sorteo_patrones WHERE sorteo_id = ? AND patron = ?');
     actuales.forEach((r) => { if (!ganadasSet.has(r.patron)) delStmt.run(id, r.patron); });
-    const insertFigura = db.prepare('INSERT INTO sorteo_patrones (sorteo_id, patron, porcentaje, monto, orden) VALUES (?, ?, ?, ?, ?)');
+    const insertFigura = db.prepare('INSERT INTO sorteo_patrones (sorteo_id, patron, porcentaje, monto, orden, activa_tras) VALUES (?, ?, ?, ?, ?, ?)');
     const ordenBase = ganadasRows.length;
-    figuras.forEach((f, i) => insertFigura.run(id, f.patron, f.porcentaje || 0, f.monto != null ? f.monto : null, ordenBase + i));
+    figuras.forEach((f, i) => insertFigura.run(id, f.patron, f.porcentaje || 0, f.monto != null ? f.monto : null, ordenBase + i, activaTrasDe(f.patron)));
   });
   tx();
 
@@ -733,4 +768,4 @@ router.put('/:id/liberar-pendientes', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, liberados: info.changes });
 });
 
-module.exports = { router, computeStats, figurasActivas, agregarNumeroCantado };
+module.exports = { router, computeStats, figurasActivas, agregarNumeroCantado, activaTrasDe };

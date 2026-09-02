@@ -266,6 +266,13 @@ if (!sorteoPatronesInfo.some((c) => c.name === 'monto')) {
 if (!sorteoPatronesInfo.some((c) => c.name === 'cerrada')) {
   db.exec("ALTER TABLE sorteo_patrones ADD COLUMN cerrada INTEGER NOT NULL DEFAULT 0");
 }
+// Migración incremental: `activa_tras` guarda el patron (si lo hay) del que
+// depende esta figura para volverse jugable -- hoy solo la usa "Picado"
+// (Cartón Lleno extra, jugado después de que el Cartón Lleno original ya
+// tenga ganador). NULL = figura normal, sin dependencia.
+if (!sorteoPatronesInfo.some((c) => c.name === 'activa_tras')) {
+  db.exec("ALTER TABLE sorteo_patrones ADD COLUMN activa_tras TEXT");
+}
 
 // Migración incremental: agrega `letra` (A/B/C/D dentro de su carta/combo) a
 // `cartones` si la tabla ya existía de una versión anterior sin esa columna.
