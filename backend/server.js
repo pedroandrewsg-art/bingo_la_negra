@@ -13,10 +13,10 @@ const cartonesRoutes = require('./routes/cartones');
 const ventasRoutes = require('./routes/ventas');
 const jugadoresRoutes = require('./routes/jugadores');
 const patronesPersonalizadosRoutes = require('./routes/patronesPersonalizados');
-const catalogosImagenesRoutes = require('./routes/catalogosImagenes');
 const settingsRoutes = require('./routes/settings');
 const logsRoutes = require('./routes/logs');
 const { attachSockets } = require('./sockets');
+const { initWhatsappBot } = require('./whatsappBot');
 const { r2, BUCKET, GetObjectCommand } = require('./r2');
 
 const app = express();
@@ -45,6 +45,32 @@ app.get('/uploads/logo/:filename', async (req, res) => {
   }
 });
 
+// Mismo esquema que el logo, para la imagen de fondo del cartón (ver
+// routes/settings.js -> POST /settings/carton-fondo).
+app.get('/uploads/carton-fondo/:filename', async (req, res) => {
+  try {
+    const obj = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `carton-fondo/${req.params.filename}` }));
+    res.set('Content-Type', obj.ContentType || 'application/octet-stream');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    obj.Body.pipe(res);
+  } catch (err) {
+    res.status(404).end();
+  }
+});
+
+// Mismo esquema que el logo, para los sonidos/música propios subidos por el
+// admin (ver routes/settings.js -> POST /settings/sounds/upload).
+app.get('/uploads/sound/:categoria/:filename', async (req, res) => {
+  try {
+    const obj = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: `sound/${req.params.categoria}/${req.params.filename}` }));
+    res.set('Content-Type', obj.ContentType || 'application/octet-stream');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    obj.Body.pipe(res);
+  } catch (err) {
+    res.status(404).end();
+  }
+});
+
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 app.use('/api/auth', authRoutes);
@@ -53,7 +79,6 @@ app.use('/api/cartones', cartonesRoutes);
 app.use('/api/ventas', ventasRoutes);
 app.use('/api/jugadores', jugadoresRoutes);
 app.use('/api/patrones-personalizados', patronesPersonalizadosRoutes);
-app.use('/api/catalogos-imagenes', catalogosImagenesRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/logs', logsRoutes);
 
@@ -72,6 +97,14 @@ process.on('uncaughtException', (err) => {
 });
 
 attachSockets(io);
+
+// El bot de WhatsApp es un canal adicional (ver whatsappBot.js) -- si falla
+// al conectar (sin internet, credenciales corruptas, etc.) el resto de la
+// app tiene que seguir funcionando exactamente igual, por eso no se espera
+// (sin await) y cualquier error queda solo logueado acá.
+initWhatsappBot(io).catch((err) => {
+  console.error('[server] No se pudo iniciar el bot de WhatsApp (la app sigue funcionando igual):', err.message);
+});
 
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {

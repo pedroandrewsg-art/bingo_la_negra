@@ -151,6 +151,44 @@ function nearWinNumbers(patternKey, grid, markedSet) {
   return [...faltantes];
 }
 
+// Celdas que efectivamente completan una figura YA ganada (a diferencia de
+// nearWinNumbers, que busca lo que FALTA para completarla). Para figuras
+// dinámicas (any-row/any-column/any-diagonal) puede haber más de una línea
+// completa a la vez (ej. dos filas llenas) -- se devuelven los números de
+// todas, para que se resalten todas las que corresponda, no solo la primera.
+// `libre` avisa aparte si el centro (LIBRE, valor null en el grid) es parte
+// de la línea/figura ganadora -- esa celda no tiene número que resaltar con
+// el mismo efecto, pero el frontend le pone un borde propio (sin animación,
+// a diferencia de las celdas numeradas) para que también quede señalada.
+function celdasGanadoras(patternKey, grid, markedSet) {
+  const p = getPatternDef(patternKey);
+  if (!p) return { numeros: [], libre: false };
+  const matrix = buildMarkedMatrix(grid, markedSet);
+  const numeros = new Set();
+  let libre = false;
+
+  function agregarSiCompleta(cells) {
+    if (cells.every(([r, c]) => matrix[r][c])) {
+      cells.forEach(([r, c]) => {
+        if (grid[r][c] == null) libre = true;
+        else numeros.add(grid[r][c]);
+      });
+    }
+  }
+
+  if (p.type === 'any-row') {
+    for (let r = 0; r < 5; r++) agregarSiCompleta([0, 1, 2, 3, 4].map((c) => [r, c]));
+  } else if (p.type === 'any-column') {
+    for (let c = 0; c < 5; c++) agregarSiCompleta([0, 1, 2, 3, 4].map((r) => [r, c]));
+  } else if (p.type === 'any-diagonal') {
+    agregarSiCompleta([0, 1, 2, 3, 4].map((i) => [i, i]));
+    agregarSiCompleta([0, 1, 2, 3, 4].map((i) => [i, 4 - i]));
+  } else if (p.type === 'fixed') {
+    agregarSiCompleta(maskCells(p.mask));
+  }
+  return { numeros: [...numeros], libre };
+}
+
 // markedMatrix: boolean[5][5], centro siempre true (LIBRE)
 function checkPattern(patternKey, markedMatrix) {
   const p = getPatternDef(patternKey);
@@ -208,4 +246,4 @@ function listPatterns() {
   return [...sistema, ...personalizados];
 }
 
-module.exports = { PATTERNS, getPatternDef, checkPattern, previewMask, listPatterns, buildMarkedMatrix, nearWinNumbers };
+module.exports = { PATTERNS, getPatternDef, checkPattern, previewMask, listPatterns, buildMarkedMatrix, nearWinNumbers, celdasGanadoras };

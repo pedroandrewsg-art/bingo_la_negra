@@ -11,30 +11,28 @@
     document.documentElement.setAttribute('data-theme', theme);
   })();
 </script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700;800&display=swap" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
     theme: {
       extend: {
         colors: {
-          bingonight: '#0a1f14',
-          bingoindigo: '#166534',
-          bingopurple: '#4ade80',
-          bingoviolet: '#86efac',
-          bingoaccent: '#bbf7d0',
-          rose: {
-            100: '#f0fdf4',
-            200: '#dcfce7',
-            300: '#4ade80',
-            400: '#22c55e',
-            500: '#16a34a',
-          },
-          pink: {
-            300: '#bbf7d0',
-          },
+          bingonight: '#14041a',
+          bingoindigo: '#4a044e',
+          bingopurple: '#a21caf',
+          bingoviolet: '#c026d3',
+          bingoaccent: '#e879f9',
         },
         boxShadow: {
-          glow: '0 0 25px rgba(187,247,208,0.35)',
+          glow: '0 0 25px rgba(232,121,249,0.35)',
+        },
+        fontFamily: {
+          // Fuente redondeada y juguetona SOLO para los cartones (letras
+          // B-I-N-G-O y números) — le da el look "generador de cartones",
+          // sin tocar la tipografía del resto de la UI (paneles, botones).
+          carton: ['Fredoka', 'sans-serif'],
         },
       },
     },
@@ -42,14 +40,13 @@
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 <style>
-  body { background: radial-gradient(ellipse at top, #166534 0%, #0a1f14 55%, #051009 100%); }
+  body { background: radial-gradient(ellipse at top, #4a044e 0%, #14041a 55%, #0a0210 100%); }
   ::-webkit-scrollbar { height: 8px; width: 8px; }
-  ::-webkit-scrollbar-thumb { background: #4ade80; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb { background: #e879f9; border-radius: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  .bingo-ball { box-shadow: 0 0 30px rgba(187,247,208,0.6), inset 0 -6px 10px rgba(0,0,0,0.35); }
+  .bingo-ball { box-shadow: 0 0 30px rgba(232,121,249,0.6), inset 0 -6px 10px rgba(0,0,0,0.35); }
   @keyframes pop { 0% { transform: scale(0.4); opacity:0; } 100% { transform: scale(1); opacity:1; } }
   .pop-in { animation: pop 0.25s ease-out; }
   @keyframes blinkCarton {
@@ -57,11 +54,21 @@
     50% { box-shadow: 0 0 0 2px rgba(245,158,11,0.2), 0 0 4px rgba(245,158,11,0.1); }
   }
   .carton-cerca { animation: blinkCarton 1s ease-in-out infinite; }
+  @keyframes ganadorPulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(16,185,129,0.95), 0 0 24px rgba(16,185,129,0.75); }
+    50% { box-shadow: 0 0 0 4px rgba(16,185,129,0.45), 0 0 10px rgba(16,185,129,0.35); }
+  }
+  .carton-ganador { animation: ganadorPulse 1s ease-in-out infinite; position: relative; z-index: 1; }
   @keyframes pulseCelda {
     0%, 100% { box-shadow: 0 0 0 2px rgba(245,158,11,1), 0 0 14px rgba(245,158,11,0.9); transform: scale(1); }
     50% { box-shadow: 0 0 0 3px rgba(245,158,11,0.5), 0 0 24px rgba(245,158,11,0.5); transform: scale(1.08); }
   }
   .celda-cerca { animation: pulseCelda 0.7s ease-in-out infinite; position: relative; z-index: 1; }
+  @keyframes pulseCeldaGanadora {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(250,204,21,1), 0 0 12px rgba(250,204,21,0.9); transform: scale(1); }
+    50% { box-shadow: 0 0 0 3px rgba(250,204,21,0.65), 0 0 18px rgba(250,204,21,0.65); transform: scale(1.04); }
+  }
+  .celda-ganadora { animation: pulseCeldaGanadora 1s ease-in-out infinite; position: relative; z-index: 1; }
 
   /* Crédito "Desarrollado por" del login — antes gris casi invisible, ahora
      con brillo neón animado para que resalte. */
@@ -80,19 +87,19 @@
     animation: creditoNeonPulse 2.2s ease-in-out infinite;
   }
   .credito-neon a {
-    color: #4ade80;
+    color: #f472b6;
     text-decoration: none;
-    border-bottom: 1px dashed rgba(74,222,128,0.7);
+    border-bottom: 1px dashed rgba(244,114,182,0.7);
     transition: color 0.15s ease;
   }
   .credito-neon a:hover {
-    color: #86efac;
+    color: #fb7185;
   }
   :root[data-theme="light"] .credito-neon {
     color: #0891b2;
   }
   :root[data-theme="light"] .credito-neon a {
-    color: #16a34a;
+    color: #db2777;
   }
 
   /* =========================================================
@@ -102,18 +109,18 @@
      tema oscuro por defecto.
      ========================================================= */
   :root[data-theme="light"] body {
-    background: radial-gradient(ellipse at top, #dcfce7 0%, #f8fafc 55%, #ffffff 100%) !important;
+    background: radial-gradient(ellipse at top, #e0f2fe 0%, #f8fafc 55%, #ffffff 100%) !important;
   }
-  :root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #16a34a !important; }
+  :root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #38bdf8 !important; }
 
   /* Superficies (tarjetas/paneles) */
   :root[data-theme="light"] .bg-slate-900\/60 { background-color: rgba(255,255,255,0.85) !important; }
   :root[data-theme="light"] .bg-slate-900\/80 { background-color: rgba(226,232,240,0.6) !important; }
   :root[data-theme="light"] .bg-slate-900 { background-color: #ffffff !important; }
   :root[data-theme="light"] .bg-slate-800\/70 { background-color: rgba(255,255,255,0.92) !important; }
-  :root[data-theme="light"] .bg-slate-800\/60 { background-color: rgba(240,253,244,0.7) !important; }
-  :root[data-theme="light"] .bg-slate-800\/40 { background-color: rgba(240,253,244,0.5) !important; }
-  :root[data-theme="light"] .bg-slate-800\/30 { background-color: rgba(240,253,244,0.35) !important; }
+  :root[data-theme="light"] .bg-slate-800\/60 { background-color: rgba(224,242,254,0.7) !important; }
+  :root[data-theme="light"] .bg-slate-800\/40 { background-color: rgba(224,242,254,0.5) !important; }
+  :root[data-theme="light"] .bg-slate-800\/30 { background-color: rgba(224,242,254,0.35) !important; }
   :root[data-theme="light"] .bg-slate-800 { background-color: #ffffff !important; }
   :root[data-theme="light"] .bg-slate-700\/60 { background-color: rgba(226,232,240,0.7) !important; }
   :root[data-theme="light"] .bg-slate-700 { background-color: #e2e8f0 !important; }
@@ -121,45 +128,45 @@
   :root[data-theme="light"] .bg-slate-950\/60 { background-color: rgba(255,255,255,0.85) !important; }
   :root[data-theme="light"] .bg-slate-950\/50 { background-color: rgba(255,255,255,0.75) !important; }
   :root[data-theme="light"] .bg-slate-950\/40 { background-color: rgba(255,255,255,0.65) !important; }
-  :root[data-theme="light"] .hover\:bg-slate-800:hover { background-color: #f0fdf4 !important; }
-  :root[data-theme="light"] .hover\:bg-slate-800\/60:hover { background-color: rgba(240,253,244,0.8) !important; }
-  :root[data-theme="light"] .hover\:bg-slate-800\/30:hover { background-color: rgba(240,253,244,0.5) !important; }
-  :root[data-theme="light"] .hover\:bg-slate-700:hover { background-color: #dcfce7 !important; }
-  :root[data-theme="light"] .hover\:text-white:hover { color: #052e16 !important; }
+  :root[data-theme="light"] .hover\:bg-slate-800:hover { background-color: #f0f9ff !important; }
+  :root[data-theme="light"] .hover\:bg-slate-800\/60:hover { background-color: rgba(224,242,254,0.8) !important; }
+  :root[data-theme="light"] .hover\:bg-slate-800\/30:hover { background-color: rgba(224,242,254,0.5) !important; }
+  :root[data-theme="light"] .hover\:bg-slate-700:hover { background-color: #bae6fd !important; }
+  :root[data-theme="light"] .hover\:text-white:hover { color: #0c2340 !important; }
 
   /* Texto */
-  :root[data-theme="light"] .text-slate-100 { color: #052e16 !important; }
-  :root[data-theme="light"] .text-slate-200 { color: #166534 !important; }
-  :root[data-theme="light"] .text-slate-300 { color: #15803d !important; }
-  :root[data-theme="light"] .text-slate-400 { color: #16a34a !important; }
-  :root[data-theme="light"] .text-slate-500 { color: #22c55e !important; }
-  :root[data-theme="light"] .text-slate-600 { color: #4ade80 !important; }
-  :root[data-theme="light"] .placeholder-slate-500::placeholder { color: #dcfce7 !important; }
+  :root[data-theme="light"] .text-slate-100 { color: #0c2340 !important; }
+  :root[data-theme="light"] .text-slate-200 { color: #0e3a66 !important; }
+  :root[data-theme="light"] .text-slate-300 { color: #155e86 !important; }
+  :root[data-theme="light"] .text-slate-400 { color: #3b7ca8 !important; }
+  :root[data-theme="light"] .text-slate-500 { color: #6ba0c4 !important; }
+  :root[data-theme="light"] .text-slate-600 { color: #9cc2dd !important; }
+  :root[data-theme="light"] .placeholder-slate-500::placeholder { color: #a9cbe3 !important; }
 
   /* Bordes */
-  :root[data-theme="light"] .border-slate-800 { border-color: #dcfce7 !important; }
-  :root[data-theme="light"] .border-slate-800\/60 { border-color: rgba(220,252,231,0.8) !important; }
-  :root[data-theme="light"] .border-slate-700 { border-color: #bbf7d0 !important; }
-  :root[data-theme="light"] .border-slate-600 { border-color: #86efac !important; }
+  :root[data-theme="light"] .border-slate-800 { border-color: #bfe3fb !important; }
+  :root[data-theme="light"] .border-slate-800\/60 { border-color: rgba(191,227,251,0.8) !important; }
+  :root[data-theme="light"] .border-slate-700 { border-color: #a8d8f5 !important; }
+  :root[data-theme="light"] .border-slate-600 { border-color: #8fcdf2 !important; }
   :root[data-theme="light"] .border-slate-500\/40 { border-color: rgba(100,116,139,0.35) !important; }
 
-  /* Acentos verdes (titulos/etiquetas) */
-  :root[data-theme="light"] .text-rose-100 { color: #166534 !important; }
-  :root[data-theme="light"] .text-rose-200 { color: #15803d !important; }
-  :root[data-theme="light"] .text-rose-300 { color: #16a34a !important; }
-  :root[data-theme="light"] .text-rose-400 { color: #22c55e !important; }
+  /* Acentos fucsia (titulos/etiquetas) */
+  :root[data-theme="light"] .text-fuchsia-100 { color: #86198f !important; }
+  :root[data-theme="light"] .text-fuchsia-200 { color: #a21caf !important; }
+  :root[data-theme="light"] .text-fuchsia-400 { color: #d946ef !important; }
   :root[data-theme="light"] .text-violet-300 { color: #7c3aed !important; }
-  :root[data-theme="light"] .from-rose-300 { --tw-gradient-from: #16a34a !important; }
-  :root[data-theme="light"] .to-pink-300 { --tw-gradient-to: #22c55e !important; }
+  :root[data-theme="light"] .from-fuchsia-300 { --tw-gradient-from: #c026d3 !important; }
+  :root[data-theme="light"] .to-pink-400 { --tw-gradient-to: #ec4899 !important; }
 
   /* Tonos de badges/encabezados de cartón sobre fondo tintado */
   :root[data-theme="light"] .text-emerald-300 { color: #047857 !important; }
   :root[data-theme="light"] .text-emerald-400 { color: #059669 !important; }
+  :root[data-theme="light"] .text-amber-200 { color: #b45309 !important; }
   :root[data-theme="light"] .text-amber-300 { color: #b45309 !important; }
   :root[data-theme="light"] .text-amber-400 { color: #b45309 !important; }
   :root[data-theme="light"] .text-red-300 { color: #b91c1c !important; }
   :root[data-theme="light"] .text-red-400 { color: #dc2626 !important; }
-  :root[data-theme="light"] .text-sky-300 { color: #0369a1 !important; }
+  :root[data-theme="light"] .text-fuchsia-300 { color: #c026d3 !important; }
   :root[data-theme="light"] .text-orange-300 { color: #c2410c !important; }
 
   /* Placa neón para el nombre del propietario en "Consulta tu Carta" —
@@ -171,8 +178,8 @@
     padding: 12px 26px;
     border-radius: 14px;
     background: radial-gradient(ellipse at center, #1a0b24 0%, #0d0414 100%);
-    border: 2px solid #bbf7d0;
-    box-shadow: 0 0 10px #bbf7d099, 0 0 24px #bbf7d055, inset 0 0 16px rgba(0,0,0,0.5);
+    border: 2px solid #38bdf8;
+    box-shadow: 0 0 10px #38bdf899, 0 0 24px #38bdf855, inset 0 0 16px rgba(0,0,0,0.5);
   }
   .owner-neon-text {
     display: inline-block;
@@ -180,13 +187,13 @@
     line-height: 1.25;
     font-weight: 800;
     letter-spacing: 0.4px;
-    color: #bbf7d0;
+    color: #38bdf8;
     word-break: break-word;
     animation: ownerNeonPulse 2.2s ease-in-out infinite;
   }
   @keyframes ownerNeonPulse {
-    0%, 100% { text-shadow: 0 0 6px currentColor, 0 0 14px currentColor, 0 0 26px #bbf7d0, 0 0 42px #4ade80; }
-    50% { text-shadow: 0 0 10px currentColor, 0 0 22px currentColor, 0 0 38px #bbf7d0, 0 0 58px #4ade80; }
+    0%, 100% { text-shadow: 0 0 6px currentColor, 0 0 14px currentColor, 0 0 26px #38bdf8, 0 0 42px #0284c7; }
+    50% { text-shadow: 0 0 10px currentColor, 0 0 22px currentColor, 0 0 38px #38bdf8, 0 0 58px #0284c7; }
   }
 
   /* Mensaje configurable bajo el logo, en la pantalla de acceso — entra con
@@ -210,6 +217,6 @@
   Ejemplo: window.BINGO_API_BASE = 'https://mi-servidor.com/api';
 -->
 <script>window.BINGO_API_BASE = window.BINGO_API_BASE || (location.origin + '/api');</script>
-<script type="text/babel" data-presets="react" src="app.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

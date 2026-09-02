@@ -162,8 +162,6 @@ CREATE TABLE IF NOT EXISTS settings (
 -- jugador: el panel sirve para llevar la cuenta de qué números ya se
 -- cantaron, tenga o no tenga ese número en algún cartón propio — antes solo
 -- se podía marcar un número ahí si estaba en al menos un cartón del jugador.
--- (Ya no se usa: BINGOLANEGRA eliminó la sala de juego automática. Se deja la
--- tabla sin borrar para no arriesgar un DROP TABLE contra producción.)
 CREATE TABLE IF NOT EXISTS tablero_marcas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   jugador_id INTEGER NOT NULL REFERENCES jugadores(id),
@@ -171,26 +169,6 @@ CREATE TABLE IF NOT EXISTS tablero_marcas (
   numeros TEXT NOT NULL DEFAULT '[]'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tablero_marcas_unico ON tablero_marcas(jugador_id, sorteo_id);
-
--- Catálogo persistente de cartones personalizados: un set de imágenes ya
--- diseñadas (ej. cartones físicos escaneados/diagramados), numeradas en
--- orden. El admin lo crea pegando la lista de links (uno por línea) en
--- "Cartones Personalizados"; luego un sorteo puede asignarlo y cada cartón
--- (por su numero) resuelve su imagen real en vez de mostrar el grid
--- calculado al azar.
-CREATE TABLE IF NOT EXISTS catalogos_imagenes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL,
-  color TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS catalogo_imagenes_items (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  catalogo_id INTEGER NOT NULL REFERENCES catalogos_imagenes(id) ON DELETE CASCADE,
-  numero INTEGER NOT NULL,
-  url TEXT NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_catalogo_item_unico ON catalogo_imagenes_items(catalogo_id, numero);
 
 -- Registro de actividad (auditoria): quien hizo que y cuando. usuario_nombre
 -- va duplicado ademas del FK a proposito -- si se borra el usuario admin, el
@@ -207,6 +185,34 @@ CREATE TABLE IF NOT EXISTS logs_actividad (
   created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_logs_actividad_categoria ON logs_actividad(categoria);
+
+-- Biblioteca de sonidos/música propios subidos por el admin (aviso de
+-- "cerca de ganar", fanfarria de BINGO, música de tensión). Persistente y
+-- separada de 'settings': a diferencia del logo (que se sobreescribe), acá
+-- cada subida queda guardada para poder re-seleccionarla más adelante sin
+-- volver a subir el archivo.
+CREATE TABLE IF NOT EXISTS sound_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  categoria TEXT NOT NULL,
+  nombre TEXT NOT NULL,
+  url TEXT NOT NULL,
+  creado_en TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sound_assets_categoria ON sound_assets(categoria);
+
+-- "Jugar por otra persona": un jugador que no puede estar presente deja que
+-- otro marque sus cartas en la sala de juego. No cambia la propiedad (owner_id
+-- en cartones sigue siendo quien compró, y por lo tanto quien cobra el
+-- premio) -- esto solo habilita a jugador_id a VER/MARCAR ese cartón además
+-- del dueño. Un solo delegado activo por cartón (índice único): si alguien
+-- más ya lo estaba jugando, el siguiente que lo toma lo reemplaza.
+CREATE TABLE IF NOT EXISTS cartones_delegados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  carton_id INTEGER NOT NULL REFERENCES cartones(id) ON DELETE CASCADE,
+  jugador_id INTEGER NOT NULL REFERENCES jugadores(id) ON DELETE CASCADE,
+  creado_en TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cartones_delegados_carton ON cartones_delegados(carton_id);
 `);
 
 // Migración incremental: agrega columnas nuevas a `sorteos` si la tabla ya
@@ -221,11 +227,28 @@ if (!sorteosInfo.some((c) => c.name === 'pie_pagina')) {
 if (!sorteosInfo.some((c) => c.name === 'modo_premio')) {
   db.exec("ALTER TABLE sorteos ADD COLUMN modo_premio TEXT NOT NULL DEFAULT 'porcentaje'");
 }
-// Migración incremental: catálogo de cartones personalizados asignado a este
-// sorteo (opcional). Si se borra el catálogo, `ON DELETE SET NULL` deja este
-// campo en NULL y el sorteo vuelve a mostrar el grid calculado.
-if (!sorteosInfo.some((c) => c.name === 'catalogo_imagenes_id')) {
-  db.exec("ALTER TABLE sorteos ADD COLUMN catalogo_imagenes_id INTEGER REFERENCES catalogos_imagenes(id) ON DELETE SET NULL");
+// Interruptor del "Números Cantados" (bola grande + tablero 1-75 que el admin
+// usa para ir cantando lo que saca del bombo) — el admin puede no querer
+// usarlo en un sorteo puntual (ej. ya tiene su propio sorteador físico
+// aparte). DEFAULT 1: el sorteo nuevo lo trae activo, se apaga a mano si no
+// se quiere.
+if (!sorteosInfo.some((c) => c.name === 'cantador_activo')) {
+  db.exec("ALTER TABLE sorteos ADD COLUMN cantador_activo INTEGER NOT NULL DEFAULT 1");
+}
+// Anuncio por voz (gratis, Web Speech API del navegador del jugador) de cada
+// número cantado -- independiente del "cantador_activo" de arriba a propósito:
+// el admin puede tener el tablero visual apagado (usa su propio sorteador
+// físico) y aun así querer que el bot de WhatsApp siga anunciando por voz.
+// DEFAULT 0: es una función nueva, el admin la prende a propósito por sorteo.
+if (!sorteosInfo.some((c) => c.name === 'voz_anunciante_activo')) {
+  db.exec("ALTER TABLE sorteos ADD COLUMN voz_anunciante_activo INTEGER NOT NULL DEFAULT 0");
+}
+// Si las ventas arrancan abiertas o cerradas al crear el sorteo (el admin lo
+// elige en el form) — DEFAULT 1 acá es solo para no romper sorteos ya
+// existentes al migrar; el default real para sorteos NUEVOS se decide
+// explícito en POST /sorteos (ver ahí).
+if (!sorteosInfo.some((c) => c.name === 'ventas_habilitadas')) {
+  db.exec("ALTER TABLE sorteos ADD COLUMN ventas_habilitadas INTEGER NOT NULL DEFAULT 1");
 }
 
 // Migración incremental: agrega `monto` (premio fijo en Bs por figura) a
@@ -249,6 +272,22 @@ if (!sorteoPatronesInfo.some((c) => c.name === 'cerrada')) {
 const cartonesInfo = db.prepare("PRAGMA table_info(cartones)").all();
 if (!cartonesInfo.some((c) => c.name === 'letra')) {
   db.exec("ALTER TABLE cartones ADD COLUMN letra TEXT");
+}
+
+// Migración incremental: `jugado_por_id`/`jugado_por_nombre` en `reclamos` y
+// `ganadores` -- snapshot de quién estaba jugando el cartón (si era distinto
+// del dueño) en el momento exacto del reclamo/premio. Es snapshot y no un
+// JOIN en vivo contra cartones_delegados a propósito: la delegación se puede
+// soltar después y el historial no debe cambiar retroactivamente.
+const reclamosInfo = db.prepare("PRAGMA table_info(reclamos)").all();
+if (!reclamosInfo.some((c) => c.name === 'jugado_por_id')) {
+  db.exec("ALTER TABLE reclamos ADD COLUMN jugado_por_id INTEGER");
+  db.exec("ALTER TABLE reclamos ADD COLUMN jugado_por_nombre TEXT");
+}
+const ganadoresInfo = db.prepare("PRAGMA table_info(ganadores)").all();
+if (!ganadoresInfo.some((c) => c.name === 'jugado_por_id')) {
+  db.exec("ALTER TABLE ganadores ADD COLUMN jugado_por_id INTEGER");
+  db.exec("ALTER TABLE ganadores ADD COLUMN jugado_por_nombre TEXT");
 }
 
 // Backfill: sorteos creados antes de soportar múltiples figuras no tienen
@@ -287,5 +326,19 @@ const insertSettingSiFalta = db.prepare(
 );
 Object.entries(WHATSAPP_LIVE_DEFAULTS).forEach(([key, valor]) => insertSettingSiFalta.run(key, valor, key));
 insertSettingSiFalta.run('login_subtitle', '75 bolillas · en tiempo real', 'login_subtitle');
+
+// Seed de la selección de sonido/música por categoría. Los avisos (alerta,
+// fanfarria) arrancan con el preset por defecto para no cambiar el
+// comportamiento de siempre; la música de tensión arranca apagada porque es
+// la más intrusiva de las tres — el admin la prende a mano si la quiere.
+insertSettingSiFalta.run('sonido_alerta_sel', 'preset:arpegio', 'sonido_alerta_sel');
+insertSettingSiFalta.run('sonido_fanfarria_sel', 'preset:fanfarria', 'sonido_fanfarria_sel');
+insertSettingSiFalta.run('sonido_musica_sel', 'off', 'sonido_musica_sel');
+// Frecuencia de la música de tensión: 'continuo' (suena todo el tiempo que
+// haya tensión, comportamiento original), 'una_vez' (un solo disparo al
+// entrar en tensión) o 'duracion' (disparo de sonido_musica_duracion_seg
+// segundos fijos).
+insertSettingSiFalta.run('sonido_musica_modo', 'continuo', 'sonido_musica_modo');
+insertSettingSiFalta.run('sonido_musica_duracion_seg', '8', 'sonido_musica_duracion_seg');
 
 module.exports = db;

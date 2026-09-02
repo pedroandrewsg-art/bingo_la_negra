@@ -34,10 +34,42 @@ router.post('/login', async (req, res) => {
   res.json({ token, user: { id: user.id, username: user.username, role: 'admin' } });
 });
 
+// ---------- LOGIN/REGISTRO DE JUGADOR (nombre + WhatsApp, sin clave) ----------
+// El WhatsApp identifica al jugador: si ya entró antes con ese número, se
+// reutiliza su registro (y sus cartones) en vez de crear uno nuevo.
+router.post('/jugador', (req, res) => {
+  const { nombre, whatsapp } = req.body;
+  if (!nombre || !whatsapp) {
+    return res.status(400).json({ error: 'Nombre completo y número de WhatsApp son obligatorios' });
+  }
+  const nombreTrim = nombre.trim();
+  const whatsappTrim = whatsapp.trim();
+  if (!/^\d{10,11}$/.test(whatsappTrim)) {
+    return res.status(400).json({ error: 'El WhatsApp debe tener entre 10 y 11 dígitos, solo números' });
+  }
+  let jugador = db.prepare('SELECT * FROM jugadores WHERE whatsapp = ?').get(whatsappTrim);
+  if (jugador) {
+    if (jugador.nombre !== nombreTrim) {
+      db.prepare('UPDATE jugadores SET nombre = ? WHERE id = ?').run(nombreTrim, jugador.id);
+      jugador.nombre = nombreTrim;
+    }
+  } else {
+    const info = db.prepare('INSERT INTO jugadores (nombre, whatsapp) VALUES (?, ?)').run(nombreTrim, whatsappTrim);
+    jugador = db.prepare('SELECT * FROM jugadores WHERE id = ?').get(info.lastInsertRowid);
+  }
+  const token = jwt.sign({ id: jugador.id, role: 'jugador', nombre: jugador.nombre, whatsapp: jugador.whatsapp }, SECRET, { expiresIn: '30d' });
+  res.json({ token, user: { id: jugador.id, nombre: jugador.nombre, whatsapp: jugador.whatsapp, role: 'jugador' } });
+});
+
 router.get('/me', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  if (!user) return res.status(404).json({ error: 'No encontrado' });
-  res.json({ user: { id: user.id, username: user.username, role: 'admin' } });
+  if (req.user.role === 'admin') {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    if (!user) return res.status(404).json({ error: 'No encontrado' });
+    return res.json({ user: { id: user.id, username: user.username, role: 'admin' } });
+  }
+  const jugador = db.prepare('SELECT * FROM jugadores WHERE id = ?').get(req.user.id);
+  if (!jugador) return res.status(404).json({ error: 'No encontrado' });
+  res.json({ user: { id: jugador.id, nombre: jugador.nombre, whatsapp: jugador.whatsapp, role: 'jugador' } });
 });
 
 // ---------- USUARIOS ADMINISTRADORES (gestión desde Configuración) ----------

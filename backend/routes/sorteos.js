@@ -121,7 +121,7 @@ function computeStats(sorteoId) {
   // todos) — por eso esto es un array por patrón, no un ganador único.
   const ganadoresRows = db
     .prepare(
-      `SELECT g.id AS ganador_id, g.patron, g.premio, g.fecha, g.jugador_id, g.carton_id,
+      `SELECT g.id AS ganador_id, g.patron, g.premio, g.fecha, g.jugador_id, g.carton_id, g.jugado_por_nombre,
               j.nombre AS jugador_nombre, c.numero AS carton_numero, c.grupo AS carton_grupo,
               c.letra AS carton_letra, c.color AS carton_color, c.grid AS carton_grid, c.marcados AS carton_marcados
        FROM ganadores g LEFT JOIN jugadores j ON j.id = g.jugador_id LEFT JOIN cartones c ON c.id = g.carton_id
@@ -163,6 +163,7 @@ function computeStats(sorteoId) {
         marcados: ganadoresFigura[0].carton_marcados ? JSON.parse(ganadoresFigura[0].carton_marcados) : null,
         fecha: ganadoresFigura[0].fecha,
         premio: ganadoresFigura[0].premio,
+        jugadoPorNombre: ganadoresFigura[0].jugado_por_nombre,
       } : null,
       ganadores: ganadoresFigura.map((g) => ({
         ganadorId: g.ganador_id,
@@ -177,11 +178,14 @@ function computeStats(sorteoId) {
         marcados: g.carton_marcados ? JSON.parse(g.carton_marcados) : null,
         fecha: g.fecha,
         premio: g.premio,
+        jugadoPorNombre: g.jugado_por_nombre,
       })),
     };
   });
 
-  return { ...sorteo, vendidos, pagados, totalCartones, recaudado, gananciaActual, premioAcumulado, figuras };
+  const numerosExtraidos = JSON.parse(sorteo.numeros_extraidos || '[]');
+
+  return { ...sorteo, vendidos, pagados, totalCartones, recaudado, gananciaActual, premioAcumulado, figuras, numerosExtraidos, cantadorActivo: !!sorteo.cantador_activo, vozAnuncianteActiva: !!sorteo.voz_anunciante_activo };
 }
 
 // Figuras de un sorteo que todavía aceptan ganadores (compartida con
@@ -226,7 +230,12 @@ router.get('/', requireAuth, requireAdmin, (req, res) => {
   res.json({ sorteos: rows.map((r) => computeStats(r.id)) });
 });
 
-router.get('/:id', requireAuth, requireAdmin, (req, res) => {
+router.get('/activos', requireAuth, (req, res) => {
+  const rows = db.prepare("SELECT id FROM sorteos WHERE estatus IN ('activo','en_juego','pausado') ORDER BY fecha_hora ASC").all();
+  res.json({ sorteos: rows.map((r) => computeStats(r.id)) });
+});
+
+router.get('/:id', requireAuth, (req, res) => {
   const s = computeStats(req.params.id);
   if (!s) return res.status(404).json({ error: 'Sorteo no encontrado' });
   res.json({ sorteo: s });
@@ -234,17 +243,12 @@ router.get('/:id', requireAuth, requireAdmin, (req, res) => {
 
 router.post('/', requireAuth, requireAdmin, (req, res) => {
   const {
-    fecha_hora, rango_desde, rango_hasta, tipo_venta, costo, porcentaje_ganancia, figuras, catalogo_imagenes_id,
+    fecha_hora, rango_desde, rango_hasta, color, tipo_venta, costo, porcentaje_ganancia, figuras,
   } = req.body;
   const modoPremio = ['porcentaje', 'monto_fijo', 'sin_premio'].includes(req.body.modo_premio) ? req.body.modo_premio : 'porcentaje';
 
-  if (!fecha_hora || rango_desde == null || rango_hasta == null || !tipo_venta || costo == null || porcentaje_ganancia == null || !Array.isArray(figuras) || !figuras.length) {
+  if (!fecha_hora || rango_desde == null || rango_hasta == null || !color || !tipo_venta || costo == null || porcentaje_ganancia == null || !Array.isArray(figuras) || !figuras.length) {
     return res.status(400).json({ error: 'Faltan campos requeridos' });
-  }
-  // BINGOLANEGRA ya solo juega con cartones personalizados (imágenes reales que
-  // el admin sube como catálogo) — ya no se generan grids al azar para vender.
-  if (catalogo_imagenes_id == null || catalogo_imagenes_id === '') {
-    return res.status(400).json({ error: 'Elige un catálogo de cartones personalizados' });
   }
   // El sistema solo admite un sorteo activo a la vez (el jugador ve las cartas
   // disponibles directo al loguearse, sin tener que elegir entre varios).
@@ -275,24 +279,17 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
   // con combo x4, "100" cartones son en realidad 100 grupos de 4 = 400 cartones físicos.
   const totalGrupos = hasta - desde + 1;
   const total = totalGrupos * tipo_venta;
-
-  // El color del sorteo se toma del catálogo (se asigna una sola vez, al
-  // crear el catálogo) — ya no se elige por separado al crear el sorteo.
-  const catalogo = db.prepare('SELECT id, nombre, color FROM catalogos_imagenes WHERE id = ?').get(catalogo_imagenes_id);
-  if (!catalogo) return res.status(400).json({ error: 'El catálogo de cartones personalizados elegido no existe' });
-  const disponibles = db.prepare('SELECT COUNT(*) c FROM catalogo_imagenes_items WHERE catalogo_id = ?').get(catalogo_imagenes_id).c;
-  if (disponibles < total) {
-    return res.status(400).json({ error: `El catálogo "${catalogo.nombre}" solo tiene ${disponibles} imágenes, pero este sorteo necesita ${total}` });
-  }
-  const catalogoId = catalogo.id;
-  const color = catalogo.color;
+  // Si no se manda nada, el sorteo nace CERRADO (el admin lo abre a mano
+  // después desde el panel) — a diferencia del DEFAULT 1 de la columna, que
+  // es solo para no romper sorteos ya existentes al migrar (ver db.js).
+  const ventasHabilitadas = req.body.ventas_habilitadas ? 1 : 0;
 
   const info = db
     .prepare(
-      `INSERT INTO sorteos (fecha_hora, rango_desde, rango_hasta, color, tipo_venta, costo, porcentaje_ganancia, modo_premio, patron, estatus, numeros_extraidos, encabezado, pie_pagina, catalogo_imagenes_id)
+      `INSERT INTO sorteos (fecha_hora, rango_desde, rango_hasta, color, tipo_venta, costo, porcentaje_ganancia, modo_premio, patron, estatus, numeros_extraidos, encabezado, pie_pagina, ventas_habilitadas)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', '[]', ?, ?, ?)`
     )
-    .run(fecha_hora, desde, hasta, color, tipo_venta, costo, porcentaje_ganancia, modoPremio, figuras[0].patron, getSetting('default_encabezado'), getSetting('default_pie_pagina'), catalogoId);
+    .run(fecha_hora, desde, hasta, color, tipo_venta, costo, porcentaje_ganancia, modoPremio, figuras[0].patron, getSetting('default_encabezado'), getSetting('default_pie_pagina'), ventasHabilitadas);
   const sorteoId = info.lastInsertRowid;
 
   const insertFigura = db.prepare('INSERT INTO sorteo_patrones (sorteo_id, patron, porcentaje, monto, orden) VALUES (?, ?, ?, ?, ?)');
@@ -320,13 +317,13 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
 
 // Campos que afectan lo que ve cualquiera mirando la lista de sorteos (no solo
 // quien está dentro del panel de ese sorteo en particular).
-const CAMPOS_VISIBLES_EN_LISTA = ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus'];
+const CAMPOS_VISIBLES_EN_LISTA = ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'ventas_habilitadas'];
 
 router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   const id = req.params.id;
   const existing = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'No encontrado' });
-  const fields = ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'encabezado', 'pie_pagina', 'catalogo_imagenes_id'];
+  const fields = ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'encabezado', 'pie_pagina', 'ventas_habilitadas'];
   const updates = [];
   const values = [];
   fields.forEach((f) => {
@@ -542,13 +539,110 @@ router.put('/:id/rango', requireAuth, requireAdmin, (req, res) => {
   res.json({ sorteo: computeStats(id) });
 });
 
+// "Canta"/deshace un número del bombo (1-75) — lo que va marcando el admin a
+// mano a medida que lo va sacando físicamente. Se guarda en orden de salida
+// (no numérico) en sorteos.numeros_extraidos, así el historial de bolillas se
+// puede mostrar tal cual salieron. Es TOGGLE: si el número ya estaba cantado,
+// tocarlo de nuevo lo deshace (el admin se equivocó o se saltó una bolilla) —
+// mismo patrón que el tablero de apoyo personal del jugador (marcar-numero en
+// routes/cartones.js), pero acá es UNA sola lista compartida por sorteo, no
+// una por jugador.
+router.put('/:id/llamar-numero', requireAuth, requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const numero = Number(req.body.numero);
+  if (!Number.isInteger(numero) || numero < 1 || numero > 75) {
+    return res.status(400).json({ error: 'Número inválido (debe ser 1-75)' });
+  }
+  const sorteo = db.prepare('SELECT numeros_extraidos, estatus, cantador_activo FROM sorteos WHERE id = ?').get(id);
+  if (!sorteo) return res.status(404).json({ error: 'Sorteo no encontrado' });
+  if (sorteo.estatus !== 'en_juego') {
+    return res.status(400).json({ error: 'Iniciá el juego antes de empezar a cantar números.' });
+  }
+  if (!sorteo.cantador_activo) {
+    return res.status(400).json({ error: 'El cantador de números está desactivado para este sorteo.' });
+  }
+
+  const lista = JSON.parse(sorteo.numeros_extraidos || '[]');
+  const idx = lista.indexOf(numero);
+  if (idx === -1) lista.push(numero);
+  else lista.splice(idx, 1);
+  // bola_actual = la última cantada (o null si se deshizo la única que había)
+  // — columna que ya existía en el esquema, se mantiene en sync por si algo
+  // más la llega a necesitar, aunque el frontend hoy se guía por el último
+  // elemento de numeros_extraidos.
+  const bolaActual = lista.length ? lista[lista.length - 1] : null;
+  db.prepare('UPDATE sorteos SET numeros_extraidos = ?, bola_actual = ? WHERE id = ?').run(JSON.stringify(lista), bolaActual, id);
+
+  const io = req.app.get('io');
+  io.to(`sorteo-${id}`).emit('numeros-cantados', { sorteoId: Number(id), numerosExtraidos: lista });
+  res.json({ ok: true, numerosExtraidos: lista });
+});
+
+// Variante "solo agregar" de lo de arriba, para el bot de WhatsApp
+// (whatsappBot.js): a diferencia del botón manual (que hace toggle -- tocar
+// de nuevo destoca), acá un número repetido no hace nada, para que un "42...
+// 42, cuarenta y dos" cantado dos veces no lo destoque por accidente. No
+// recibe sorteoId (el bot no lo sabe) -- siempre apunta al único sorteo
+// 'en_juego' que puede haber activo a la vez.
+// El bot corre si CUALQUIERA de los dos interruptores está prendido -- el
+// cantador visual (tablero 1-75 del panel/jugador) o la voz anunciante --
+// para que apagar uno no apague el otro: el admin puede querer solo la voz
+// sin el tablero (o viceversa, como ya funcionaba antes de agregar la voz).
+function agregarNumeroCantado(numero, io) {
+  const sorteo = db
+    .prepare(`SELECT id, numeros_extraidos FROM sorteos WHERE estatus = 'en_juego' AND (cantador_activo = 1 OR voz_anunciante_activo = 1)`)
+    .get();
+  if (!sorteo) return null;
+
+  const lista = JSON.parse(sorteo.numeros_extraidos || '[]');
+  if (lista.includes(numero)) return null;
+  lista.push(numero);
+  db.prepare('UPDATE sorteos SET numeros_extraidos = ?, bola_actual = ? WHERE id = ?').run(
+    JSON.stringify(lista),
+    numero,
+    sorteo.id
+  );
+  io.to(`sorteo-${sorteo.id}`).emit('numeros-cantados', { sorteoId: sorteo.id, numerosExtraidos: lista });
+  return sorteo.id;
+}
+
+// Prende/apaga el "Números Cantados" para este sorteo puntual (ej. el admin
+// ya tiene su propio sorteador físico y no quiere usar el de la app). Con el
+// cantador apagado, el jugador ni siquiera ve la sección (ver
+// ConsultaCartonesPanel/sala de juego en el frontend).
+router.put('/:id/cantador', requireAuth, requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const activo = !!req.body.activo;
+  const info = db.prepare('UPDATE sorteos SET cantador_activo = ? WHERE id = ?').run(activo ? 1 : 0, id);
+  if (!info.changes) return res.status(404).json({ error: 'Sorteo no encontrado' });
+
+  const io = req.app.get('io');
+  io.to(`sorteo-${id}`).emit('numeros-cantados', { sorteoId: Number(id) });
+  res.json({ ok: true, cantadorActivo: activo });
+});
+
+// Prende/apaga el anuncio por voz para este sorteo -- independiente del
+// cantador de arriba a propósito (ver agregarNumeroCantado): el admin puede
+// querer la voz sin el tablero visual, o el tablero sin la voz.
+router.put('/:id/voz-anunciante', requireAuth, requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const activo = !!req.body.activo;
+  const info = db.prepare('UPDATE sorteos SET voz_anunciante_activo = ? WHERE id = ?').run(activo ? 1 : 0, id);
+  if (!info.changes) return res.status(404).json({ error: 'Sorteo no encontrado' });
+
+  const io = req.app.get('io');
+  io.to(`sorteo-${id}`).emit('numeros-cantados', { sorteoId: Number(id) });
+  res.json({ ok: true, vozAnuncianteActiva: activo });
+});
+
 // Texto formateado para WhatsApp
 router.get('/:id/vendidos-texto', requireAuth, requireAdmin, (req, res) => {
   const sorteo = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(req.params.id);
   if (!sorteo) return res.status(404).json({ error: 'No encontrado' });
+  const cfg = getWhatsappLiveSettings();
   const conjuntos = agruparPorConjunto(cartonesConDueno(req.params.id)).filter((g) => !g.disponible);
   let text = `*BINGO ${sorteo.color.toUpperCase()} - VENDIDOS*\nFecha: ${sorteo.fecha_hora}\n\n`;
-  text += conjuntos.map((g) => `${etiquetaConjunto(g)} - ${g.nombre || 'N/A'}${g.pagado ? ' ⭐' : ''}`).join('\n');
+  text += conjuntos.map((g) => `${etiquetaConjunto(g)} - ${g.nombre || 'N/A'}${g.pagado ? ` ${cfg.pagado_emoji}` : ''}`).join('\n');
   text += `\n\nTotal vendidos: ${conjuntos.length}`;
   res.json({ texto: text });
 });
@@ -639,4 +733,4 @@ router.put('/:id/liberar-pendientes', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, liberados: info.changes });
 });
 
-module.exports = { router, computeStats, figurasActivas };
+module.exports = { router, computeStats, figurasActivas, agregarNumeroCantado };
