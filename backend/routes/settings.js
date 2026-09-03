@@ -175,6 +175,28 @@ router.put('/reclamos-vista', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, activo });
 });
 
+// Minutos de espera antes de liberar automáticamente un cartón 'vendido'
+// (apartado, sin pago verificado) — ver backend/liberarPendientes.js, que
+// corre en segundo plano cada 30s y lee esta misma clave. 0 = desactivado.
+router.get('/liberacion-pendientes', requireAuth, requireAdmin, (req, res) => {
+  res.json({ minutos: Number(getSetting('liberacion_pendientes_minutos')) || 0 });
+});
+
+router.put('/liberacion-pendientes', requireAuth, requireAdmin, (req, res) => {
+  const minutos = Number(req.body.minutos);
+  if (!Number.isFinite(minutos) || minutos < 0 || !Number.isInteger(minutos)) {
+    return res.status(400).json({ error: 'Los minutos deben ser un número entero, 0 o mayor' });
+  }
+  // Tope de una semana -- un valor absurdamente alto (ej. escrito de más)
+  // sería indistinguible de "desactivado" en la práctica, pero mejor
+  // rechazarlo explícito que dejar un dato sin sentido guardado.
+  if (minutos > 10080) {
+    return res.status(400).json({ error: 'Máximo 10080 minutos (7 días)' });
+  }
+  setSetting('liberacion_pendientes_minutos', String(minutos));
+  res.json({ ok: true, minutos });
+});
+
 router.put('/whatsapp', requireAuth, requireAdmin, (req, res) => {
   const link = (req.body.link || '').trim();
   if (!link) return res.status(400).json({ error: 'Ponle un link al grupo de WhatsApp' });

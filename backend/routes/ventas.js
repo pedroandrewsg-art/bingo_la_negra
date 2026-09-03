@@ -70,7 +70,10 @@ router.post('/comprar', requireAuth, (req, res) => {
   const monto = +(sorteo.costo * new Set(cartones.map((c) => c.grupo)).size).toFixed(2);
 
   const tx = db.transaction(() => {
-    const marcarVendido = db.prepare(`UPDATE cartones SET estado = 'vendido', owner_id = ? WHERE id = ?`);
+    // `reservado_en` marca el instante exacto del apartado -- lo usa
+    // liberarPendientes.js para saber cuánto tiempo lleva esperando su
+    // verificación de pago.
+    const marcarVendido = db.prepare(`UPDATE cartones SET estado = 'vendido', owner_id = ?, reservado_en = datetime('now') WHERE id = ?`);
     cartones.forEach((c) => marcarVendido.run(req.user.id, c.id));
     const numTx = `TX-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
     db.prepare(

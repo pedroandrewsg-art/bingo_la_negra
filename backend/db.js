@@ -281,6 +281,17 @@ if (!cartonesInfo.some((c) => c.name === 'letra')) {
   db.exec("ALTER TABLE cartones ADD COLUMN letra TEXT");
 }
 
+// Migración incremental: `reservado_en` en `cartones` — momento exacto en
+// que un cartón pasó a 'vendido' (apartado, ver routes/ventas.js), usado
+// por liberarPendientes.js para saber cuánto tiempo lleva esperando su
+// verificación de pago. NULL a propósito para cartones ya 'vendido' antes
+// de esta migración (nunca se auto-liberan retroactivamente sin una fecha
+// real de referencia) — solo los apartados DESPUÉS de este cambio quedan
+// sujetos al temporizador.
+if (!cartonesInfo.some((c) => c.name === 'reservado_en')) {
+  db.exec("ALTER TABLE cartones ADD COLUMN reservado_en TEXT");
+}
+
 // Migración incremental: `jugado_por_id`/`jugado_por_nombre` en `reclamos` y
 // `ganadores` -- snapshot de quién estaba jugando el cartón (si era distinto
 // del dueño) en el momento exacto del reclamo/premio. Es snapshot y no un
@@ -347,5 +358,10 @@ insertSettingSiFalta.run('sonido_musica_sel', 'off', 'sonido_musica_sel');
 // segundos fijos).
 insertSettingSiFalta.run('sonido_musica_modo', 'continuo', 'sonido_musica_modo');
 insertSettingSiFalta.run('sonido_musica_duracion_seg', '8', 'sonido_musica_duracion_seg');
+
+// Minutos de espera antes de liberar automáticamente un cartón 'vendido'
+// (apartado, sin pago verificado) — ver liberarPendientes.js. '0' (default)
+// = desactivado, nunca libera solo.
+insertSettingSiFalta.run('liberacion_pendientes_minutos', '0', 'liberacion_pendientes_minutos');
 
 module.exports = db;

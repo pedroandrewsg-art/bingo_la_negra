@@ -16,6 +16,7 @@ const patronesPersonalizadosRoutes = require('./routes/patronesPersonalizados');
 const settingsRoutes = require('./routes/settings');
 const logsRoutes = require('./routes/logs');
 const { attachSockets } = require('./sockets');
+const { iniciarLiberadorPendientes } = require('./liberarPendientes');
 const { initWhatsappBot } = require('./whatsappBot');
 const { r2, BUCKET, GetObjectCommand } = require('./r2');
 
@@ -97,6 +98,7 @@ process.on('uncaughtException', (err) => {
 });
 
 attachSockets(io);
+iniciarLiberadorPendientes(io);
 
 // El bot de WhatsApp es un canal adicional (ver whatsappBot.js) -- si falla
 // al conectar (sin internet, credenciales corruptas, etc.) el resto de la
