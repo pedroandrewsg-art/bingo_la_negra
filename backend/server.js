@@ -15,8 +15,10 @@ const jugadoresRoutes = require('./routes/jugadores');
 const patronesPersonalizadosRoutes = require('./routes/patronesPersonalizados');
 const settingsRoutes = require('./routes/settings');
 const logsRoutes = require('./routes/logs');
+const pushRoutes = require('./routes/push');
 const { attachSockets } = require('./sockets');
 const { iniciarLiberadorPendientes } = require('./liberarPendientes');
+const { iniciarRecordatorioPago } = require('./recordatorioPago');
 const { initWhatsappBot } = require('./whatsappBot');
 const { r2, BUCKET, GetObjectCommand } = require('./r2');
 
@@ -82,6 +84,7 @@ app.use('/api/jugadores', jugadoresRoutes);
 app.use('/api/patrones-personalizados', patronesPersonalizadosRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/logs', logsRoutes);
+app.use('/api/push', pushRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
@@ -99,6 +102,7 @@ process.on('uncaughtException', (err) => {
 
 attachSockets(io);
 iniciarLiberadorPendientes(io);
+iniciarRecordatorioPago();
 
 // El bot de WhatsApp es un canal adicional (ver whatsappBot.js) -- si falla
 // al conectar (sin internet, credenciales corruptas, etc.) el resto de la

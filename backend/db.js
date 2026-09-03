@@ -170,6 +170,23 @@ CREATE TABLE IF NOT EXISTS tablero_marcas (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tablero_marcas_unico ON tablero_marcas(jugador_id, sorteo_id);
 
+-- Suscripciones a notificaciones push (Web Push) por dispositivo del
+-- jugador -- ver recordatorioPago.js, que envía el recordatorio de pago
+-- (settings.recordatorio_pago_activo) a cada jugador con cartones
+-- pendientes que tenga al menos una suscripción acá. Un mismo jugador
+-- puede tener varias filas (un celular, una compu, etc.) -- endpoint es
+-- único por navegador/dispositivo, así resuscribirse desde el mismo
+-- actualiza la fila en vez de duplicarla.
+CREATE TABLE IF NOT EXISTS push_subscripciones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  jugador_id INTEGER NOT NULL REFERENCES jugadores(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_push_subs_jugador ON push_subscripciones(jugador_id);
+
 -- Registro de actividad (auditoria): quien hizo que y cuando. usuario_nombre
 -- va duplicado ademas del FK a proposito -- si se borra el usuario admin, el
 -- historial no pierde legibilidad (mismo criterio que owner_id en cartones).
@@ -363,5 +380,11 @@ insertSettingSiFalta.run('sonido_musica_duracion_seg', '8', 'sonido_musica_durac
 // (apartado, sin pago verificado) — ver liberarPendientes.js. '0' (default)
 // = desactivado, nunca libera solo.
 insertSettingSiFalta.run('liberacion_pendientes_minutos', '0', 'liberacion_pendientes_minutos');
+
+// Recordatorio de pago a jugadores con cartones pendientes (push + voz, ver
+// recordatorioPago.js) -- activo/desactivado y texto del mensaje, editable
+// por el admin desde Configuración. '0' (default) = desactivado.
+insertSettingSiFalta.run('recordatorio_pago_activo', '0', 'recordatorio_pago_activo');
+insertSettingSiFalta.run('recordatorio_pago_texto', 'Recuerde enviar el pago de sus cartones', 'recordatorio_pago_texto');
 
 module.exports = db;

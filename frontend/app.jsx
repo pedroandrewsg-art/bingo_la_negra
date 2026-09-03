@@ -1457,6 +1457,29 @@ function anunciarNumero(n, { onStart, onEnd } = {}) {
   window.speechSynthesis.speak(u);
 }
 
+// Igual que anunciarNumero pero para un texto arbitrario (ver
+// RecordatorioPago) -- solo suena mientras la pestaña siga abierta (aunque
+// esté minimizada o el navegador esté en otra app); si el navegador
+// realmente la cierra/mata, ahí la única forma de avisar es la notificación
+// push nativa (ver frontend/sw.js), que no puede hablar.
+function anunciarTexto(texto) {
+  if (!('speechSynthesis' in window) || !texto) return;
+  const u = new SpeechSynthesisUtterance(texto);
+  u.lang = 'es-ES';
+  u.rate = 0.95;
+  window.speechSynthesis.speak(u);
+}
+
+// Convierte la clave pública VAPID (base64url, la que devuelve el backend)
+// al Uint8Array que pide PushManager.subscribe -- transformación estándar,
+// documentada en cualquier guía de Web Push (no es específica de este repo).
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
 // ---------------------------------------------------------------------------
 // Auth context
 // ---------------------------------------------------------------------------
@@ -4191,6 +4214,7 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
 
       <WhatsappLivePanel sorteoId={sorteoId} />
       <LiberacionPendientesConfig />
+      <RecordatorioPagoConfig />
 
       <Card>
         <h3 className="font-bold text-fuchsia-100 mb-3">Registro de Cartas Vendidas ({cartonesPorGrupo.size})</h3>
@@ -4787,6 +4811,92 @@ function AdminJugadores() {
 // ===========================================================================
 // USUARIO · JUGAR (selección de sorteo, compra de cartones y sala de juego)
 // ===========================================================================
+// Banner de recordatorio de pago para el jugador: mientras tenga cartones
+// "vendido" (pago sin confirmar) y el admin haya activado la función (ver
+// RecordatorioPagoConfig), repite el aviso cada minuto por voz (mientras la
+// pestaña siga abierta) y ofrece activar la notificación push nativa del
+// navegador (llega aunque esté minimizado o el jugador cambie de app -- ver
+// backend/recordatorioPago.js y frontend/sw.js). Autocontenido: pide su
+// propia info al backend en vez de depender del estado de UserJugar.
+function RecordatorioPago() {
+  const [config, setConfig] = useState(null); // { activo, texto }
+  const [tienePendientes, setTienePendientes] = useState(false);
+  const [permiso, setPermiso] = useState(() => (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'));
+  const [activando, setActivando] = useState(false);
+  const [errorActivar, setErrorActivar] = useState('');
+  const vozIntervalRef = useRef(null);
+
+  useEffect(() => {
+    apiFetch('/settings/recordatorio-pago/publico').then(setConfig).catch(() => {});
+  }, []);
+
+  function chequearPendientes() {
+    apiFetch('/cartones/mias').then((d) => {
+      setTienePendientes(d.cartones.some((c) => c.estado === 'vendido'));
+    }).catch(() => {});
+  }
+  useEffect(() => {
+    chequearPendientes();
+    socket.on('cartones-actualizados', chequearPendientes);
+    socket.on('cartones-vendidos', chequearPendientes);
+    return () => {
+      socket.off('cartones-actualizados', chequearPendientes);
+      socket.off('cartones-vendidos', chequearPendientes);
+    };
+  }, []);
+
+  // Voz cada minuto mientras la pestaña siga abierta -- se re-arma solo si
+  // cambia el texto/activo/pendientes, nunca deja timers duplicados vivos.
+  useEffect(() => {
+    clearInterval(vozIntervalRef.current);
+    if (!config?.activo || !tienePendientes) return;
+    const hablar = () => anunciarTexto(config.texto);
+    hablar();
+    vozIntervalRef.current = setInterval(hablar, 60000);
+    return () => clearInterval(vozIntervalRef.current);
+  }, [config?.activo, config?.texto, tienePendientes]);
+
+  async function activarPush() {
+    if (activando) return;
+    setActivando(true);
+    setErrorActivar('');
+    try {
+      const perm = await Notification.requestPermission();
+      setPermiso(perm);
+      if (perm !== 'granted') return;
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      const { publicKey } = await apiFetch('/push/vapid-public-key');
+      if (!publicKey) { setErrorActivar('El servidor todavía no tiene notificaciones configuradas'); return; }
+      const existente = await reg.pushManager.getSubscription();
+      const sub = existente || await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await apiFetch('/push/suscribir', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
+    } catch (e) {
+      setErrorActivar('No se pudo activar: ' + e.message);
+    } finally {
+      setActivando(false);
+    }
+  }
+
+  if (!config?.activo || !tienePendientes) return null;
+
+  return (
+    <div className="rounded-xl border-2 border-amber-500/40 bg-amber-500/10 px-4 py-3 mb-4 flex items-center justify-between gap-3 flex-wrap">
+      <div className="text-sm text-amber-200">⏰ {config.texto}</div>
+      {permiso === 'granted' && <div className="text-xs text-amber-300/80 shrink-0">🔔 Notificaciones activadas</div>}
+      {permiso === 'denied' && <div className="text-xs text-amber-300/80 shrink-0">🔕 Notificaciones bloqueadas por el navegador</div>}
+      {permiso !== 'granted' && permiso !== 'denied' && permiso !== 'unsupported' && (
+        <Button variant="ghost" className="!py-1 !px-3 text-xs shrink-0" disabled={activando} onClick={activarPush}>
+          {activando ? 'Activando...' : '🔔 Activar notificación'}
+        </Button>
+      )}
+      {errorActivar && <div className="text-xs text-red-400 w-full">{errorActivar}</div>}
+    </div>
+  );
+}
+
 function UserJugar() {
   const { user } = useAuth();
   const { soundConfig } = useSettings();
@@ -5501,6 +5611,7 @@ function UserJugar() {
 
   return (
     <div className="space-y-6">
+      <RecordatorioPago />
       {compraInfo && (
         <Modal title="🎉 ¡Compra Registrada!" onClose={() => setCompraInfo(null)} centerTitle>
           <div className="space-y-3 text-center">
@@ -6264,6 +6375,76 @@ function LiberacionPendientesConfig() {
           ? `Activo: los cartones sin pago verificado se liberan solos a los ${minutosGuardado} minuto(s) de apartados.`
           : 'Desactivado: los cartones apartados quedan esperando indefinidamente hasta que vos los liberes o confirmes el pago a mano.'}
       </p>
+    </Card>
+  );
+}
+
+// Interruptor + texto del recordatorio de pago a jugadores con cartones
+// pendientes (push + voz, ver backend/recordatorioPago.js y frontend
+// RecordatorioPago).
+function RecordatorioPagoConfig() {
+  const [activo, setActivo] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch('/settings/recordatorio-pago')
+      .then((d) => { setActivo(!!d.activo); setTexto(d.texto || ''); })
+      .catch(() => {})
+      .finally(() => setCargando(false));
+  }, []);
+
+  async function guardar(nuevoActivo) {
+    if (nuevoActivo && !texto.trim()) { setError('Escribí el texto del recordatorio'); return; }
+    setGuardando(true);
+    setError('');
+    setMsg('');
+    try {
+      const d = await apiFetch('/settings/recordatorio-pago', { method: 'PUT', body: JSON.stringify({ activo: nuevoActivo, texto }) });
+      setActivo(d.activo);
+      setTexto(d.texto);
+      setMsg('Guardado');
+    } catch (e) { setError(e.message); }
+    finally { setGuardando(false); }
+  }
+
+  return (
+    <Card className="space-y-3 max-w-xl">
+      <div>
+        <Label>⏰ Recordatorio de pago a jugadores con cartones pendientes</Label>
+        <p className="text-xs text-slate-500 mt-1">
+          Mientras un jugador tenga cartones "vendido" (pago sin confirmar), le repetimos este aviso cada minuto: en voz mientras tenga la app abierta, y como notificación del sistema aunque haya minimizado el navegador o cambiado de app (los navegadores no permiten voz cuando la app está realmente cerrada, solo la notificación).
+        </p>
+      </div>
+      {!cargando && (
+        <>
+          <div>
+            <Label>Texto del recordatorio</Label>
+            <Input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Recuerde enviar el pago de sus cartones" />
+          </div>
+          <button
+            type="button"
+            disabled={guardando}
+            onClick={() => guardar(!activo)}
+            className={`w-full flex items-center gap-3 text-left rounded-xl border-2 py-2.5 px-3 transition disabled:opacity-60 ${activo ? 'border-bingoaccent bg-bingopurple/10' : 'border-slate-700 hover:border-slate-600'}`}
+          >
+            <span className={`shrink-0 w-11 h-6 rounded-full relative transition ${activo ? 'bg-bingoaccent' : 'bg-slate-700'}`}>
+              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${activo ? 'left-5' : 'left-0.5'}`} />
+            </span>
+            <span className="text-sm font-semibold text-slate-200">{activo ? 'Activado' : 'Desactivado'}</span>
+          </button>
+          {texto.trim() && (
+            <Button variant="ghost" className="!py-1.5 text-xs" disabled={guardando} onClick={() => guardar(activo)}>
+              {guardando ? 'Guardando...' : 'Guardar texto'}
+            </Button>
+          )}
+        </>
+      )}
+      {msg && <div className="text-sm text-emerald-400">{msg}</div>}
+      {error && <div className="text-sm text-red-400">{error}</div>}
     </Card>
   );
 }
