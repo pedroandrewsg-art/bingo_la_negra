@@ -267,6 +267,13 @@ if (!sorteosInfo.some((c) => c.name === 'voz_anunciante_activo')) {
 if (!sorteosInfo.some((c) => c.name === 'ventas_habilitadas')) {
   db.exec("ALTER TABLE sorteos ADD COLUMN ventas_habilitadas INTEGER NOT NULL DEFAULT 1");
 }
+// Nombre opcional para distinguir sorteos que corren en simultáneo (ej. "3pm"
+// y "5pm") -- vacío es válido, en ese caso se sigue mostrando "#id · color"
+// como siempre. Ver routes/sorteos.js (ya no se limita a un sorteo activo a
+// la vez, solo a uno en_juego).
+if (!sorteosInfo.some((c) => c.name === 'nombre')) {
+  db.exec("ALTER TABLE sorteos ADD COLUMN nombre TEXT NOT NULL DEFAULT ''");
+}
 
 // Migración incremental: agrega `monto` (premio fijo en Bs por figura) a
 // `sorteo_patrones` si la tabla ya existía de una versión anterior sin esa

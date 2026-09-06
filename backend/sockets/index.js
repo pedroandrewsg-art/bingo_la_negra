@@ -9,10 +9,22 @@
 // reclamos para repetir el mismo sorteo).
 const db = require('../db');
 
+// Se pueden vender cartones de varios sorteos a la vez, pero solo uno puede
+// estar EN JUEGO en un momento dado -- el bot de WhatsApp que canta números
+// (agregarNumeroCantado, ver routes/sorteos.js) no recibe el sorteoId, busca
+// "el" sorteo en_juego a ciegas, y con dos activos a la vez quedaría
+// ambiguo. Devuelve { error } o { ok: true } para que el admin vea por qué
+// se bloqueó (antes este evento no devolvía nada).
 function iniciarJuego(sorteoId, io) {
+  const otroEnJuego = db.prepare("SELECT id, color, nombre FROM sorteos WHERE estatus = 'en_juego' AND id != ?").get(sorteoId);
+  if (otroEnJuego) {
+    const etiqueta = otroEnJuego.nombre || `#${otroEnJuego.id} · ${otroEnJuego.color}`;
+    return { error: `Ya hay un sorteo en juego (${etiqueta}). Pausalo o finalizalo antes de iniciar este.` };
+  }
   db.prepare(`UPDATE sorteos SET estatus = 'en_juego' WHERE id = ?`).run(sorteoId);
   io.to(`sorteo-${sorteoId}`).emit('sorteo-iniciado', { sorteoId });
   io.emit('sorteos-cambio', {});
+  return { ok: true };
 }
 
 function reiniciarSorteo(sorteoId, io) {
@@ -35,7 +47,10 @@ function attachSockets(io) {
     socket.on('leave-sorteo', ({ sorteoId }) => {
       socket.leave(`sorteo-${sorteoId}`);
     });
-    socket.on('admin:iniciar-sorteo', ({ sorteoId }) => iniciarJuego(sorteoId, io));
+    socket.on('admin:iniciar-sorteo', ({ sorteoId }, cb) => {
+      const resultado = iniciarJuego(sorteoId, io);
+      if (typeof cb === 'function') cb(resultado);
+    });
     socket.on('admin:reiniciar-sorteo', ({ sorteoId }) => reiniciarSorteo(sorteoId, io));
   });
 }

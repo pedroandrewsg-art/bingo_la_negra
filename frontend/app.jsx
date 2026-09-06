@@ -2198,7 +2198,7 @@ function VerificarListaPanel({ onVolver }) {
               onClick={() => setSorteoElegido(s.id)}
               className="w-full text-left bg-slate-800/60 hover:bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 transition"
             >
-              {s.color} — {s.fecha_hora?.replace('T', ' ')}
+              {s.nombre ? `${s.nombre} — ` : ''}{s.color} — {s.fecha_hora?.replace('T', ' ')}
             </button>
           ))}
         </div>
@@ -2462,7 +2462,7 @@ function ConsultaCartonesPanel({ onVolver }) {
               onClick={() => setSorteoElegido(s.id)}
               className="w-full text-left bg-slate-800/60 hover:bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 transition"
             >
-              {s.color} — {s.fecha_hora?.replace('T', ' ')}
+              {s.nombre ? `${s.nombre} — ` : ''}{s.color} — {s.fecha_hora?.replace('T', ' ')}
             </button>
           ))}
         </div>
@@ -2516,7 +2516,7 @@ function ConsultaCartonesPanel({ onVolver }) {
       {resultado && (
         <div className="space-y-3">
           <div className="text-sm text-slate-300 text-center flex items-center justify-center gap-2 flex-wrap">
-            Sorteo #{resultado.sorteo.id} · {resultado.sorteo.color} · {resultado.sorteo.fecha_hora?.replace('T', ' ')}
+            {resultado.sorteo.nombre ? `${resultado.sorteo.nombre} · ` : ''}Sorteo #{resultado.sorteo.id} · {resultado.sorteo.color} · {resultado.sorteo.fecha_hora?.replace('T', ' ')}
             <Badge tone={resultado.sorteo.estatus === 'en_juego' ? 'yellow' : resultado.sorteo.estatus === 'finalizado' ? 'gray' : 'green'}>{resultado.sorteo.estatus}</Badge>
           </div>
           <div className="flex justify-center"><TemaBadge temaId={cardTheme} /></div>
@@ -2561,7 +2561,7 @@ function ConsultaCartonesPanel({ onVolver }) {
       {personaElegida && sorteoNombre && (
         <div className="space-y-3">
           <div className="text-sm text-slate-300 text-center flex items-center justify-center gap-2 flex-wrap">
-            Sorteo #{sorteoNombre.id} · {sorteoNombre.color} · {sorteoNombre.fecha_hora?.replace('T', ' ')}
+            {sorteoNombre.nombre ? `${sorteoNombre.nombre} · ` : ''}Sorteo #{sorteoNombre.id} · {sorteoNombre.color} · {sorteoNombre.fecha_hora?.replace('T', ' ')}
             <Badge tone={sorteoNombre.estatus === 'en_juego' ? 'yellow' : sorteoNombre.estatus === 'finalizado' ? 'gray' : 'green'}>{sorteoNombre.estatus}</Badge>
           </div>
           <div className="flex justify-center"><TemaBadge temaId={cardTheme} /></div>
@@ -2889,7 +2889,7 @@ function AdminSorteos() {
   const [error, setError] = useState('');
   const [showEditorFigura, setShowEditorFigura] = useState(false);
 
-  const emptyForm = { fecha_hora: '', rango_desde: 1, rango_hasta: 100, color: 'Verde', tipo_venta: 1, costo: 1, porcentaje_ganancia: 30, modo_premio: 'porcentaje', figuras: [], ventas_habilitadas: false };
+  const emptyForm = { nombre: '', fecha_hora: '', rango_desde: 1, rango_hasta: 100, color: 'Verde', tipo_venta: 1, costo: 1, porcentaje_ganancia: 30, modo_premio: 'porcentaje', figuras: [], ventas_habilitadas: false };
   const [form, setForm] = useState(emptyForm);
 
   function toggleFigura(key) {
@@ -3019,6 +3019,11 @@ function AdminSorteos() {
       {showForm && (
         <Modal title="Nuevo Sorteo" onClose={() => setShowForm(false)} wide>
           <form onSubmit={crearSorteo} className="grid md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <Label>Nombre del sorteo (opcional)</Label>
+              <Input placeholder="Ej. Sorteo de las 3pm" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+              <p className="text-xs text-slate-500 mt-1">Útil si vas a tener más de un sorteo activo a la vez. Sin nombre, se identifica como "#id · color".</p>
+            </div>
             <div>
               <Label>Fecha y Hora</Label>
               <Input required type="datetime-local" value={form.fecha_hora} onChange={(e) => setForm({ ...form, fecha_hora: e.target.value })} />
@@ -3198,6 +3203,7 @@ function AdminSorteos() {
               <thead>
                 <tr className="text-left text-slate-400 border-b border-slate-800">
                   <th className="py-2 pr-3">ID</th>
+                  <th className="py-2 pr-3">Nombre</th>
                   <th className="py-2 pr-3">Fecha</th>
                   <th className="py-2 pr-3">Color</th>
                   <th className="py-2 pr-3">Figura</th>
@@ -3215,6 +3221,7 @@ function AdminSorteos() {
                   return (
                     <tr key={s.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
                       <td className="py-2 pr-3 text-slate-400">#{s.id}</td>
+                      <td className="py-2 pr-3">{s.nombre || <span className="text-slate-600">—</span>}</td>
                       <td className="py-2 pr-3">{s.fecha_hora?.replace('T', ' ')}</td>
                       <td className="py-2 pr-3"><Badge>{s.color}</Badge></td>
                       <td className="py-2 pr-3">
@@ -3246,7 +3253,7 @@ function AdminSorteos() {
                     </tr>
                   );
                 })}
-                {!sorteos.length && <tr><td colSpan="11" className="text-center text-slate-500 py-8">No hay sorteos creados aún.</td></tr>}
+                {!sorteos.length && <tr><td colSpan="12" className="text-center text-slate-500 py-8">No hay sorteos creados aún.</td></tr>}
               </tbody>
             </table>
           </Card>
@@ -3264,6 +3271,7 @@ function AdminSorteos() {
                   </div>
                   <Badge tone={s.estatus === 'activo' ? 'green' : s.estatus === 'en_juego' ? 'yellow' : s.estatus === 'pausado' ? 'red' : 'gray'}>{s.estatus}</Badge>
                 </div>
+                {s.nombre && <div className="font-bold text-slate-100">{s.nombre}</div>}
                 <div className="text-xs text-slate-400">{s.fecha_hora?.replace('T', ' ')}</div>
                 <div className="flex flex-col gap-1">
                   {(s.figuras || []).map((f) => (
@@ -3805,7 +3813,7 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
 
       <Card>
         <div className="flex flex-wrap gap-6 justify-between items-center">
-          <div><div className="text-xs text-slate-400">Sorteo</div><div className="font-bold">#{sorteo.id} · {sorteo.color}</div></div>
+          <div><div className="text-xs text-slate-400">Sorteo</div><div className="font-bold">{sorteo.nombre ? `${sorteo.nombre} · ` : ''}#{sorteo.id} · {sorteo.color}</div></div>
           <div><div className="text-xs text-slate-400">Fecha</div><div className="font-bold">{sorteo.fecha_hora?.replace('T', ' ')}</div></div>
           <div><div className="text-xs text-slate-400">Costo</div><div className="font-bold">{money(sorteo.costo)}</div></div>
           <div><div className="text-xs text-slate-400">Vendidos</div><div className="font-bold">{sorteo.vendidos}/{sorteo.totalCartones} <span className="text-emerald-400">({sorteo.pagados} pagados)</span></div></div>
@@ -3874,7 +3882,10 @@ function SorteoDrawPanel({ sorteoId, onClose }) {
           <h3 className="font-bold text-fuchsia-100">Control del Juego</h3>
           <div className="flex flex-wrap items-center gap-2">
             {sorteo.estatus === 'activo' && (
-              <Button variant="success" onClick={() => socket.emit('admin:iniciar-sorteo', { sorteoId })}>▶ Iniciar Juego</Button>
+              <Button
+                variant="success"
+                onClick={() => socket.emit('admin:iniciar-sorteo', { sorteoId }, (r) => { if (r?.error) setAccionMsg(`❌ ${r.error}`); })}
+              >▶ Iniciar Juego</Button>
             )}
             {sorteo.estatus === 'en_juego' && <Badge tone="yellow">En juego — venta cerrada</Badge>}
             {sorteo.estatus === 'finalizado' && <Badge tone="gray">Finalizado</Badge>}
@@ -5110,13 +5121,10 @@ function UserJugar() {
     loadGrid(id);
   }
 
-  // El sistema solo admite un sorteo activo a la vez, así que no hace falta
-  // que el jugador elija nada: apenas hay uno disponible, se selecciona solo.
   // Si el sorteo que tenía elegido ya no está entre los activos (el admin lo
-  // finalizó/eliminó y creó uno nuevo mientras el jugador seguía logueado),
-  // se limpia la selección para que el siguiente bloque elija el nuevo — sin
-  // esto, la pantalla de "Elige tus cartones" se quedaba pegada mostrando el
-  // sorteo viejo para cualquiera que ya estuviera con la sesión abierta.
+  // finalizó/eliminó mientras el jugador seguía logueado), se limpia la
+  // selección para que el siguiente bloque vuelva a resolverla — sin esto, la
+  // pantalla de "Elige tus cartones" se quedaba pegada mostrando el sorteo viejo.
   useEffect(() => {
     if (selectedSorteoId != null && !sorteosActivos.some((s) => s.id === selectedSorteoId)) {
       setSelectedSorteoId(null);
@@ -5125,8 +5133,12 @@ function UserJugar() {
     }
   }, [sorteosActivos]);
 
+  // Con un solo sorteo activo no hace falta que el jugador elija nada, se
+  // selecciona solo (como siempre). Con varios activos en simultáneo, se deja
+  // `selectedSorteoId` en null a propósito -- el render de más abajo muestra
+  // un selector para que el jugador elija a cuál entrar a comprar.
   useEffect(() => {
-    if (sorteosActivos.length && selectedSorteoId == null) {
+    if (sorteosActivos.length === 1 && selectedSorteoId == null) {
       seleccionarSorteo(sorteosActivos[0].id);
     }
   }, [sorteosActivos, selectedSorteoId]);
@@ -5828,6 +5840,28 @@ function UserJugar() {
         </Card>
       )}
 
+      {/* Con más de un sorteo activo en simultáneo, no se puede autoseleccionar
+          uno solo (ver el useEffect de arriba) -- el jugador elige a cuál
+          entrar a comprar. Con uno solo, esta pantalla nunca se llega a ver. */}
+      {sorteosActivos.length > 1 && !selectedSorteoId && (
+        <Card className="space-y-3">
+          <h2 className="text-lg font-bold text-center text-sky-100">🎟️ Elige un sorteo</h2>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {sorteosActivos.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => seleccionarSorteo(s.id)}
+                className="text-left rounded-xl border border-slate-700 hover:border-bingoaccent bg-slate-800/60 hover:bg-slate-800 transition p-3"
+              >
+                <div className="font-bold text-slate-100">{s.nombre || `Sorteo #${s.id} · ${s.color}`}</div>
+                <div className="text-xs text-slate-400 mt-0.5">{s.fecha_hora?.replace('T', ' ')} · {s.tipo_venta === 1 ? '1 Cartón' : `Combo x${s.tipo_venta}`} · {money(s.costo)}</div>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {sorteoSel && (
         <Card className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -5958,7 +5992,14 @@ function UserJugar() {
             )}
             {misSorteos.length > 0 && (
               <Select className="w-40" value={juegoSorteoId || ''} onChange={(e) => setJuegoSorteoId(Number(e.target.value))}>
-                {misSorteos.map((id) => <option key={id} value={id}>Sorteo #{id}</option>)}
+                {misSorteos.map((id) => {
+                  // Busca nombre/color en los sorteos activos para una etiqueta
+                  // más clara -- si ya no está activo (finalizado hace rato y el
+                  // jugador todavía tiene la pestaña abierta), cae al "#id" de siempre.
+                  const s = sorteosActivos.find((s) => s.id === id);
+                  const etiqueta = s ? (s.nombre || `Sorteo #${id} · ${s.color}`) : `Sorteo #${id}`;
+                  return <option key={id} value={id}>{etiqueta}</option>;
+                })}
               </Select>
             )}
             <label className="flex items-center gap-2 text-sm text-slate-300 bg-slate-800/60 px-3 py-2 rounded-lg border border-slate-700 whitespace-nowrap">

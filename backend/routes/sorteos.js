@@ -234,7 +234,7 @@ router.get('/patrones', (req, res) => {
 // como texto por WhatsApp, solo que buscable dentro de la app.
 router.get('/publicos', (req, res) => {
   const rows = db
-    .prepare("SELECT id, color, fecha_hora, estatus FROM sorteos WHERE estatus IN ('activo','en_juego') ORDER BY fecha_hora ASC")
+    .prepare("SELECT id, color, nombre, fecha_hora, estatus FROM sorteos WHERE estatus IN ('activo','en_juego') ORDER BY fecha_hora ASC")
     .all();
   res.json({ sorteos: rows });
 });
@@ -273,12 +273,12 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
   if (!fecha_hora || rango_desde == null || rango_hasta == null || !color || !tipo_venta || costo == null || porcentaje_ganancia == null || !Array.isArray(figuras) || !figuras.length) {
     return res.status(400).json({ error: 'Faltan campos requeridos' });
   }
-  // El sistema solo admite un sorteo activo a la vez (el jugador ve las cartas
-  // disponibles directo al loguearse, sin tener que elegir entre varios).
-  const yaActivo = db.prepare("SELECT id, fecha_hora FROM sorteos WHERE estatus IN ('activo','en_juego','pausado') LIMIT 1").get();
-  if (yaActivo) {
-    return res.status(400).json({ error: `Ya hay un sorteo activo (#${yaActivo.id}, ${yaActivo.fecha_hora}). Debes finalizarlo o eliminarlo antes de crear uno nuevo.` });
-  }
+  // Se pueden vender cartones de varios sorteos en simultáneo (ej. el de las
+  // 3pm y el de las 5pm abiertos a la vez) -- el único límite real es no
+  // tener dos EN JUEGO (cantando números) al mismo tiempo, para que el bot de
+  // WhatsApp nunca quede sin saber a cuál de los dos pertenece un número
+  // dicho por voz (ver esa traba en sockets/index.js, iniciarJuego).
+  const nombre = typeof req.body.nombre === 'string' ? req.body.nombre.trim() : '';
   const patronesValidos = new Set(listPatterns().map((p) => p.key));
   const patronesCatalogo = new Map(listPatterns().map((p) => [p.key, p]));
   const patronesElegidos = new Set(figuras.map((f) => f.patron));
@@ -315,10 +315,10 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO sorteos (fecha_hora, rango_desde, rango_hasta, color, tipo_venta, costo, porcentaje_ganancia, modo_premio, patron, estatus, numeros_extraidos, encabezado, pie_pagina, ventas_habilitadas)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', '[]', ?, ?, ?)`
+      `INSERT INTO sorteos (fecha_hora, rango_desde, rango_hasta, color, tipo_venta, costo, porcentaje_ganancia, modo_premio, patron, estatus, numeros_extraidos, encabezado, pie_pagina, ventas_habilitadas, nombre)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'activo', '[]', ?, ?, ?, ?)`
     )
-    .run(fecha_hora, desde, hasta, color, tipo_venta, costo, porcentaje_ganancia, modoPremio, figuras[0].patron, getSetting('default_encabezado'), getSetting('default_pie_pagina'), ventasHabilitadas);
+    .run(fecha_hora, desde, hasta, color, tipo_venta, costo, porcentaje_ganancia, modoPremio, figuras[0].patron, getSetting('default_encabezado'), getSetting('default_pie_pagina'), ventasHabilitadas, nombre);
   const sorteoId = info.lastInsertRowid;
 
   const insertFigura = db.prepare('INSERT INTO sorteo_patrones (sorteo_id, patron, porcentaje, monto, orden, activa_tras) VALUES (?, ?, ?, ?, ?, ?)');
@@ -346,19 +346,19 @@ router.post('/', requireAuth, requireAdmin, (req, res) => {
 
 // Campos que afectan lo que ve cualquiera mirando la lista de sorteos (no solo
 // quien está dentro del panel de ese sorteo en particular).
-const CAMPOS_VISIBLES_EN_LISTA = ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'ventas_habilitadas'];
+const CAMPOS_VISIBLES_EN_LISTA = ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'ventas_habilitadas', 'nombre'];
 
 router.put('/:id', requireAuth, requireAdmin, (req, res) => {
   const id = req.params.id;
   const existing = db.prepare('SELECT * FROM sorteos WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'No encontrado' });
-  const fields = ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'encabezado', 'pie_pagina', 'ventas_habilitadas'];
+  const fields = ['fecha_hora', 'color', 'costo', 'porcentaje_ganancia', 'estatus', 'encabezado', 'pie_pagina', 'ventas_habilitadas', 'nombre'];
   const updates = [];
   const values = [];
   fields.forEach((f) => {
     if (req.body[f] !== undefined) {
       updates.push(`${f} = ?`);
-      values.push(req.body[f]);
+      values.push(f === 'nombre' ? String(req.body[f]).trim() : req.body[f]);
     }
   });
   if (updates.length) {
