@@ -2618,6 +2618,114 @@ function cargarJugadorRecordado() {
   } catch (e) { return null; }
 }
 
+// Fondo animado de bolas de bingo para la pantalla de bienvenida — decorativo
+// puro (pointer-events: none), se mueven solas y se apartan del cursor al
+// pasar cerca para que se sienta interactivo sin estorbar los clicks reales.
+function BingoBallsBackground() {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const PALETA = ['#e879f9', '#c026d3', '#7c3aed', '#facc15', '#38bdf8', '#f87171'];
+    const mouse = { x: -9999, y: -9999 };
+    let balls = [];
+    let raf;
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    function initBalls() {
+      const cantidad = Math.max(12, Math.min(26, Math.floor((window.innerWidth * window.innerHeight) / 55000)));
+      balls = Array.from({ length: cantidad }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: 16 + Math.random() * 22,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        color: PALETA[Math.floor(Math.random() * PALETA.length)],
+        num: 1 + Math.floor(Math.random() * 75),
+      }));
+    }
+
+    // Color de texto por luminancia del fondo (no fijo) -- así el número
+    // siempre queda legible sea cual sea el color que le toque a la bola.
+    function colorTexto(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      const luminancia = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return luminancia > 140 ? '#0f172a' : '#f8fafc';
+    }
+
+    function step() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      balls.forEach((b) => {
+        const dx = b.x - mouse.x;
+        const dy = b.y - mouse.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        if (dist < 130) {
+          const fuerza = (130 - dist) / 130;
+          b.vx += (dx / dist) * fuerza * 0.7;
+          b.vy += (dy / dist) * fuerza * 0.7;
+        }
+        b.x += b.vx;
+        b.y += b.vy;
+        b.vx *= 0.97;
+        b.vy *= 0.97;
+        if (b.x < -40) b.x = canvas.width + 40;
+        if (b.x > canvas.width + 40) b.x = -40;
+        if (b.y < -40) b.y = canvas.height + 40;
+        if (b.y > canvas.height + 40) b.y = -40;
+
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.shadowColor = b.color;
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fillStyle = b.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = colorTexto(b.color);
+        ctx.font = `700 ${Math.floor(b.r * 0.8)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(b.num), b.x, b.y + 1);
+        ctx.restore();
+      });
+      raf = requestAnimationFrame(step);
+    }
+
+    function onMove(e) {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    }
+    function onLeave() {
+      mouse.x = -9999;
+      mouse.y = -9999;
+    }
+
+    resize();
+    initBalls();
+    step();
+    window.addEventListener('resize', resize);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseleave', onLeave);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseleave', onLeave);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }} aria-hidden="true" />;
+}
+
 function AuthScreen() {
   const { login } = useAuth();
   const { logoUrl, loginSubtitle } = useSettings();
@@ -2672,20 +2780,21 @@ function AuthScreen() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative">
-      <div className="absolute top-4 right-4"><ThemeToggle /></div>
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      <BingoBallsBackground />
+      <div className="absolute top-4 right-4 z-10"><ThemeToggle /></div>
       {mode !== 'admin' && (
         <button
           type="button"
           onClick={() => { setMode('admin'); setError(''); }}
           title="Administración"
           aria-label="Administración"
-          className="absolute top-4 left-4 text-slate-600/40 hover:text-slate-400 hover:opacity-100 opacity-50 transition text-lg leading-none p-2"
+          className="absolute top-4 left-4 z-10 text-slate-600/40 hover:text-slate-400 hover:opacity-100 opacity-50 transition text-lg leading-none p-2"
         >
           🔒
         </button>
       )}
-      <div className={`w-full ${mode === 'consulta' ? 'max-w-2xl' : 'max-w-md'}`}>
+      <div className={`w-full relative z-10 ${mode === 'consulta' ? 'max-w-2xl' : 'max-w-md'}`}>
         <div className="text-center mb-6">
           <img src={logoUrl || "logo.png"} alt="Bingo la Negra" className="w-24 h-24 mx-auto mb-2 rounded-full object-cover border-2 border-bingoaccent shadow-glow" />
           <h1 className="text-2xl font-black bg-gradient-to-r from-fuchsia-300 to-pink-400 bg-clip-text text-transparent">Bingo la Negra</h1>
@@ -2718,14 +2827,16 @@ function AuthScreen() {
               <button
                 type="button"
                 onClick={() => setMode('lista')}
-                className="w-full mt-3 text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-xl py-2 transition"
+                className="w-full mt-3 text-sm font-semibold text-white rounded-xl py-2.5 shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all"
+                style={{ background: 'linear-gradient(135deg, #e879f9, #c026d3)' }}
               >
                 🔍 Verifícate en la Lista
               </button>
               <button
                 type="button"
                 onClick={() => setMode('consulta')}
-                className="w-full mt-2 text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-xl py-2 transition"
+                className="w-full mt-2 text-sm font-semibold text-white rounded-xl py-2.5 shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all"
+                style={{ background: 'linear-gradient(135deg, #7c3aed, #38bdf8)' }}
               >
                 🧾 Consulta tus Cartones
               </button>
