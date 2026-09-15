@@ -471,6 +471,19 @@ router.get('/de-jugador/:jugadorId', requireAuth, (req, res) => {
        ORDER BY grupo ASC, letra ASC`
     )
     .all(sorteoId, jugadorId);
+  // Si ya le pedí (pendiente de que el dueño responda) alguna de estas
+  // cartas, lo marco acá -- así el botón de "elegir" no deja pedirla de
+  // nuevo mientras espera respuesta (ver solicitudPendiente en el frontend).
+  const solicitudesMias = new Set(
+    db
+      .prepare(
+        `SELECT grupos FROM solicitudes_delegacion
+         WHERE sorteo_id = ? AND propietario_id = ? AND solicitante_id = ? AND estado = 'pendiente'`
+      )
+      .all(sorteoId, jugadorId, req.user.id)
+      .flatMap((r) => JSON.parse(r.grupos))
+  );
+
   const porGrupo = new Map();
   rows.forEach((c) => {
     const g = c.grupo != null ? c.grupo : c.numero;
@@ -485,13 +498,17 @@ router.get('/de-jugador/:jugadorId', requireAuth, (req, res) => {
       delegadoId: delegado ? delegado.jugador_id : null,
       delegadoNombre: delegado ? delegado.nombre : null,
       delegadoSoyYo: delegado ? delegado.jugador_id === req.user.id : false,
+      solicitudPendiente: solicitudesMias.has(grupo),
     };
   });
   res.json({ grupos });
 });
 
-// Toma una o más cartas de otro jugador para jugarlas en su lugar en la sala
-// de juego. No cambia owner_id -- el premio sigue siendo de quien compró.
+// Pide jugar una o más cartas de otro jugador -- YA NO da acceso directo:
+// queda pendiente hasta que el dueño real de esas cartas la apruebe (ver
+// PUT /solicitudes-delegacion/:id). Si ya había una solicitud pendiente mía
+// para este mismo dueño+sorteo, se reemplaza por esta (mismo criterio que el
+// upsert que antes hacía /delegar directo, pero ahora sobre la solicitud).
 router.post('/delegar', requireAuth, (req, res) => {
   const { sorteo_id, jugador_id, grupos } = req.body;
   if (!sorteo_id || !jugador_id || !Array.isArray(grupos) || !grupos.length) {
@@ -506,27 +523,124 @@ router.post('/delegar', requireAuth, (req, res) => {
     .all(sorteo_id, jugador_id, ...grupos);
   if (!rows.length) return res.status(404).json({ error: 'No se encontraron esas cartas' });
 
+  const solicitadas = [];
+  const yaTomadas = [];
+  const gruposPorGrupoId = new Map();
+  rows.forEach((c) => {
+    const actual = delegadoDeCarton(c.id);
+    if (actual && actual.jugador_id !== req.user.id) {
+      yaTomadas.push({ grupo: c.grupo, nombre: actual.nombre });
+      return;
+    }
+    gruposPorGrupoId.set(c.grupo, true);
+  });
+  const grupos_ok = [...gruposPorGrupoId.keys()];
+
+  if (grupos_ok.length) {
+    const existente = db
+      .prepare(
+        `SELECT id, grupos FROM solicitudes_delegacion
+         WHERE sorteo_id = ? AND propietario_id = ? AND solicitante_id = ? AND estado = 'pendiente'`
+      )
+      .get(sorteo_id, jugador_id, req.user.id);
+    if (existente) {
+      const combinados = [...new Set([...JSON.parse(existente.grupos), ...grupos_ok])];
+      db.prepare(`UPDATE solicitudes_delegacion SET grupos = ?, creado_en = datetime('now') WHERE id = ?`).run(JSON.stringify(combinados), existente.id);
+    } else {
+      db.prepare(
+        `INSERT INTO solicitudes_delegacion (sorteo_id, propietario_id, solicitante_id, grupos) VALUES (?, ?, ?, ?)`
+      ).run(sorteo_id, jugador_id, req.user.id, JSON.stringify(grupos_ok));
+    }
+    solicitadas.push(...grupos_ok);
+    const solicitante = db.prepare('SELECT nombre FROM jugadores WHERE id = ?').get(req.user.id);
+    req.app.get('io').to(`sorteo-${sorteo_id}`).emit('solicitud-delegacion', {
+      sorteoId: Number(sorteo_id),
+      propietarioId: Number(jugador_id),
+      solicitanteId: req.user.id,
+      solicitanteNombre: solicitante?.nombre || 'Alguien',
+      grupos: grupos_ok,
+    });
+  }
+
+  res.json({ ok: true, solicitadas, yaTomadas });
+});
+
+// Solicitudes pendientes DIRIGIDAS A MÍ (soy el dueño de esas cartas) en un
+// sorteo -- para mostrarlas al entrar/reconectar aunque me haya perdido el
+// aviso en vivo por socket (mismo criterio de red de seguridad que reclamos).
+router.get('/solicitudes-delegacion', requireAuth, (req, res) => {
+  const sorteoId = Number(req.query.sorteo_id);
+  if (!sorteoId) return res.json({ solicitudes: [] });
+  const rows = db
+    .prepare(
+      `SELECT s.id, s.grupos, s.creado_en, j.id AS solicitante_id, j.nombre AS solicitante_nombre
+       FROM solicitudes_delegacion s JOIN jugadores j ON j.id = s.solicitante_id
+       WHERE s.sorteo_id = ? AND s.propietario_id = ? AND s.estado = 'pendiente'
+       ORDER BY s.creado_en ASC`
+    )
+    .all(sorteoId, req.user.id);
+  res.json({
+    solicitudes: rows.map((r) => ({
+      id: r.id,
+      grupos: JSON.parse(r.grupos),
+      solicitanteId: r.solicitante_id,
+      solicitanteNombre: r.solicitante_nombre,
+      creadoEn: r.creado_en,
+    })),
+  });
+});
+
+// El dueño aprueba o rechaza -- solo él puede resolver su propia solicitud
+// (ni el admin ni el solicitante). Aprobar recién acá crea las filas de
+// cartones_delegados (mismo upsert que tenía el /delegar viejo).
+router.put('/solicitudes-delegacion/:id', requireAuth, (req, res) => {
+  const solicitud = db.prepare('SELECT * FROM solicitudes_delegacion WHERE id = ?').get(req.params.id);
+  if (!solicitud) return res.status(404).json({ error: 'Solicitud no encontrada' });
+  if (solicitud.propietario_id !== req.user.id) return res.status(403).json({ error: 'Esta solicitud no es tuya' });
+  if (solicitud.estado !== 'pendiente') return res.status(400).json({ error: 'Esta solicitud ya fue resuelta' });
+
+  const aprobar = !!req.body.aprobar;
+  const grupos = JSON.parse(solicitud.grupos);
   const tomadas = [];
   const yaTomadas = [];
-  const upsert = db.prepare(
-    `INSERT INTO cartones_delegados (carton_id, jugador_id) VALUES (?, ?)
-     ON CONFLICT(carton_id) DO UPDATE SET jugador_id = excluded.jugador_id, creado_en = datetime('now')`
-  );
-  const tx = db.transaction(() => {
-    rows.forEach((c) => {
-      const actual = delegadoDeCarton(c.id);
-      if (actual && actual.jugador_id !== req.user.id) {
-        yaTomadas.push({ grupo: c.grupo, nombre: actual.nombre });
-        return;
-      }
-      upsert.run(c.id, req.user.id);
-      tomadas.push(c.grupo);
-    });
-  });
-  tx();
 
-  if (tomadas.length) req.app.get('io').to(`sorteo-${sorteo_id}`).emit('cartones-actualizados', { sorteoId: Number(sorteo_id) });
-  res.json({ ok: true, tomadas: [...new Set(tomadas)], yaTomadas });
+  if (aprobar) {
+    const placeholders = grupos.map(() => '?').join(',');
+    const rows = db
+      .prepare(`SELECT * FROM cartones WHERE sorteo_id = ? AND owner_id = ? AND grupo IN (${placeholders})`)
+      .all(solicitud.sorteo_id, solicitud.propietario_id, ...grupos);
+    const upsert = db.prepare(
+      `INSERT INTO cartones_delegados (carton_id, jugador_id) VALUES (?, ?)
+       ON CONFLICT(carton_id) DO UPDATE SET jugador_id = excluded.jugador_id, creado_en = datetime('now')`
+    );
+    const tx = db.transaction(() => {
+      rows.forEach((c) => {
+        const actual = delegadoDeCarton(c.id);
+        if (actual && actual.jugador_id !== solicitud.solicitante_id) {
+          yaTomadas.push({ grupo: c.grupo, nombre: actual.nombre });
+          return;
+        }
+        upsert.run(c.id, solicitud.solicitante_id);
+        tomadas.push(c.grupo);
+      });
+    });
+    tx();
+  }
+
+  db.prepare(`UPDATE solicitudes_delegacion SET estado = ? WHERE id = ?`).run(aprobar ? 'aprobada' : 'rechazada', req.params.id);
+
+  const propietario = db.prepare('SELECT nombre FROM jugadores WHERE id = ?').get(solicitud.propietario_id);
+  const io = req.app.get('io');
+  if (tomadas.length) io.to(`sorteo-${solicitud.sorteo_id}`).emit('cartones-actualizados', { sorteoId: solicitud.sorteo_id });
+  io.to(`sorteo-${solicitud.sorteo_id}`).emit('solicitud-delegacion-resuelta', {
+    sorteoId: solicitud.sorteo_id,
+    solicitudId: solicitud.id,
+    solicitanteId: solicitud.solicitante_id,
+    propietarioNombre: propietario?.nombre || 'El dueño',
+    aprobado: aprobar,
+    grupos: [...new Set(tomadas)],
+  });
+  res.json({ ok: true, aprobado: aprobar, tomadas: [...new Set(tomadas)], yaTomadas });
 });
 
 // Suelta cartas que se habían tomado -- puede hacerlo quien las tomó o el

@@ -230,6 +230,22 @@ CREATE TABLE IF NOT EXISTS cartones_delegados (
   creado_en TEXT DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cartones_delegados_carton ON cartones_delegados(carton_id);
+
+-- "Jugar por otra persona" ya NO da acceso directo: primero queda una
+-- solicitud pendiente que el DUEÑO real de esas cartas tiene que aprobar (ver
+-- POST/PUT /cartones/solicitudes-delegacion) -- recién ahí se crean las filas
+-- de cartones_delegados de arriba. La columna grupos guarda la lista de
+-- cartas pedidas como JSON (un jugador puede pedir varias de una sola vez).
+-- Una solicitud vieja (aprobada/rechazada) se conserva como historial, no se borra.
+CREATE TABLE IF NOT EXISTS solicitudes_delegacion (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sorteo_id INTEGER NOT NULL REFERENCES sorteos(id) ON DELETE CASCADE,
+  propietario_id INTEGER NOT NULL REFERENCES jugadores(id) ON DELETE CASCADE,
+  solicitante_id INTEGER NOT NULL REFERENCES jugadores(id) ON DELETE CASCADE,
+  grupos TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'pendiente',
+  creado_en TEXT DEFAULT (datetime('now'))
+);
 `);
 
 // Migración incremental: agrega columnas nuevas a `sorteos` si la tabla ya

@@ -5117,6 +5117,11 @@ function UserJugar() {
   const [delegarSeleccion, setDelegarSeleccion] = useState(new Set());
   const [delegarError, setDelegarError] = useState('');
   const [delegarGuardando, setDelegarGuardando] = useState(false);
+  // Solicitudes de "jugar por otra persona" que otros me mandaron a MÍ (soy
+  // el dueño de esas cartas) y todavía no respondí -- ver
+  // solicitud-delegacion/solicitud-delegacion-resuelta más abajo.
+  const [solicitudesRecibidas, setSolicitudesRecibidas] = useState([]);
+  const [solicitudMsg, setSolicitudMsg] = useState('');
 
   function abrirDelegar() {
     setDelegarAbierto(true);
@@ -5157,6 +5162,7 @@ function UserJugar() {
 
   function toggleDelegarGrupo(g) {
     if (g.delegadoId && !g.delegadoSoyYo) return; // ya la está jugando otra persona
+    if (g.solicitudPendiente) return; // ya le pedí esta, esperando que responda
     setDelegarSeleccion((prev) => {
       const next = new Set(prev);
       next.has(g.grupo) ? next.delete(g.grupo) : next.add(g.grupo);
@@ -5164,6 +5170,9 @@ function UserJugar() {
     });
   }
 
+  // Ya no da acceso directo: manda una solicitud y espera a que el dueño real
+  // de esas cartas la apruebe (ver solicitud-delegacion-resuelta más abajo,
+  // que avisa cuando responda).
   async function confirmarDelegar() {
     if (!delegarJugador || !delegarSeleccion.size) return;
     setDelegarGuardando(true);
@@ -5173,12 +5182,13 @@ function UserJugar() {
         method: 'POST',
         body: JSON.stringify({ sorteo_id: delegarSorteoId, jugador_id: delegarJugador.id, grupos: [...delegarSeleccion] }),
       });
-      cargarMisSorteos();
-      cargarMisCartonesJuego();
       if (d.yaTomadas && d.yaTomadas.length) {
         setDelegarError(`Alguien más ya está jugando: ${d.yaTomadas.map((x) => `Carta ${x.grupo} (${x.nombre})`).join(', ')}`);
-      } else {
+      }
+      if (d.solicitadas && d.solicitadas.length) {
         setDelegarAbierto(false);
+        setSolicitudMsg(`⏳ Le pediste permiso a ${delegarJugador.nombre} para jugar Carta ${d.solicitadas.join(', ')}. Te avisamos cuando responda.`);
+        setTimeout(() => setSolicitudMsg(''), 6000);
       }
     } catch (e) { setDelegarError(e.message); }
     finally { setDelegarGuardando(false); }
@@ -5189,6 +5199,25 @@ function UserJugar() {
       await apiFetch('/cartones/delegar', { method: 'DELETE', body: JSON.stringify({ sorteo_id: juegoSorteoId, jugador_id: duenoId, grupos: [grupo] }) });
       cargarMisCartonesJuego();
     } catch (e) { setMarcarError(e.message); }
+  }
+
+  // Solicitudes de otros para jugar MIS cartas, pendientes de mi respuesta.
+  async function cargarSolicitudesDelegacion() {
+    if (!juegoSorteoId) return;
+    try {
+      const d = await apiFetch(`/cartones/solicitudes-delegacion?sorteo_id=${juegoSorteoId}`);
+      setSolicitudesRecibidas(d.solicitudes);
+    } catch (e) { /* red de seguridad silenciosa, como el resto de las cargas periódicas */ }
+  }
+
+  async function responderSolicitud(id, aprobar) {
+    setSolicitudesRecibidas((prev) => prev.filter((s) => s.id !== id)); // optimista
+    try {
+      await apiFetch(`/cartones/solicitudes-delegacion/${id}`, { method: 'PUT', body: JSON.stringify({ aprobar }) });
+    } catch (e) {
+      setMarcarError(e.message);
+      cargarSolicitudesDelegacion(); // se equivocó al quitarla optimistamente, la vuelve a traer
+    }
   }
   // Figuras cuyo ganador ya se notificó (por socket o por sondeo/reconexión),
   // para no mostrar la misma ventana de "¡BINGO!" dos veces. Se reinician al
@@ -5458,6 +5487,7 @@ function UserJugar() {
     cargarMisCartonesJuego();
     cargarSorteoJuego();
     cargarMisGanadas();
+    cargarSolicitudesDelegacion();
     socket.emit('join-sorteo', { sorteoId: juegoSorteoId });
     const onGanador = (p) => {
       if (p.sorteoId != juegoSorteoId) return;
@@ -5477,7 +5507,7 @@ function UserJugar() {
     // como red de seguridad extra, se vuelve a pedir el estado real del
     // sorteo — así ningún "¡BINGO!" ni cartón se queda sin actualizar solo
     // porque el evento en vivo no llegó.
-    const onConnect = () => { cargarSorteoJuego(); cargarMisCartonesJuego(); cargarMisReclamos(); };
+    const onConnect = () => { cargarSorteoJuego(); cargarMisCartonesJuego(); cargarMisReclamos(); cargarSolicitudesDelegacion(); };
     socket.on('connect', onConnect);
     // Tercera red de seguridad: si el celular vuelve a primer plano (se
     // desbloquea, se vuelve a la pestaña) y los temporizadores en segundo
@@ -5527,6 +5557,26 @@ function UserJugar() {
         return prev.filter((r) => r.reclamoId !== p.reclamoId);
       });
     };
+    // Alguien pidió jugar MIS cartas -- si soy yo el dueño destinatario,
+    // recargo la lista de solicitudes pendientes (trae la nueva con nombre y
+    // grupos ya resueltos, más simple que armar el objeto acá del payload).
+    const onSolicitud = (p) => {
+      if (p.sorteoId != juegoSorteoId || p.propietarioId !== user.id) return;
+      reproducirBeep();
+      cargarSolicitudesDelegacion();
+    };
+    // El dueño de unas cartas que YO pedí ya respondió -- si aprobó, mis
+    // cartones aparecen recargando "Mis Cartones"; si rechazó, solo aviso.
+    const onSolicitudResuelta = (p) => {
+      if (p.sorteoId != juegoSorteoId || p.solicitanteId !== user.id) return;
+      if (p.aprobado) {
+        setSolicitudMsg(`✅ ${p.propietarioNombre} aceptó que juegues Carta ${p.grupos.join(', ')}.`);
+        cargarMisCartonesJuego();
+      } else {
+        setSolicitudMsg(`❌ ${p.propietarioNombre} rechazó tu solicitud.`);
+      }
+      setTimeout(() => setSolicitudMsg(''), 6000);
+    };
     socket.on('bingo-ganador', onGanador);
     socket.on('bingo-reclamo', onReclamo);
     socket.on('bingo-reclamo-resuelto', onReclamoResuelto);
@@ -5537,6 +5587,8 @@ function UserJugar() {
     socket.on('cartones-actualizados', onCartones);
     socket.on('numeros-cantados', onOtro);
     socket.on('sorteos-cambio', onSorteosCambio);
+    socket.on('solicitud-delegacion', onSolicitud);
+    socket.on('solicitud-delegacion-resuelta', onSolicitudResuelta);
     return () => {
       socket.emit('leave-sorteo', { sorteoId: juegoSorteoId });
       socket.off('bingo-ganador', onGanador);
@@ -5549,6 +5601,8 @@ function UserJugar() {
       socket.off('cartones-vendidos', onCartones);
       socket.off('cartones-actualizados', onCartones);
       socket.off('numeros-cantados', onOtro);
+      socket.off('solicitud-delegacion', onSolicitud);
+      socket.off('solicitud-delegacion-resuelta', onSolicitudResuelta);
       socket.off('connect', onConnect);
       document.removeEventListener('visibilitychange', onVisible);
       clearInterval(pollInterval);
@@ -5769,7 +5823,7 @@ function UserJugar() {
         <Modal title="🎭 Jugar por otra persona" onClose={() => setDelegarAbierto(false)} wide>
           <div className="space-y-3">
             <p className="text-xs text-slate-400">
-              Busca a alguien que ya tenga cartas en este sorteo (por su nombre o WhatsApp), elige cuáles quieres jugarle y aparecerán en tu sala junto a las tuyas. Sus cartas siguen siendo de esa persona — el premio, si gana, es para ella.
+              Busca a alguien que ya tenga cartas en este sorteo (por su nombre o WhatsApp) y elige cuáles quieres jugarle. Le llega un aviso y tiene que autorizarlo antes de que aparezcan en tu sala — sus cartas siguen siendo de esa persona, el premio, si gana, es para ella.
             </p>
             <Input
               placeholder="Buscar por nombre o WhatsApp..."
@@ -5805,15 +5859,16 @@ function UserJugar() {
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3 max-h-96 overflow-y-auto">
                   {delegarGrupos.map((g) => {
                     const tomadaPorOtro = g.delegadoId && !g.delegadoSoyYo;
+                    const bloqueada = tomadaPorOtro || g.solicitudPendiente;
                     const elegida = delegarSeleccion.has(g.grupo);
                     return (
                       <button
                         key={g.grupo}
                         type="button"
-                        disabled={tomadaPorOtro}
+                        disabled={bloqueada}
                         onClick={() => toggleDelegarGrupo(g)}
                         className={`text-left rounded-xl border-2 p-1.5 transition ${
-                          tomadaPorOtro ? 'border-slate-700 opacity-50 cursor-not-allowed' :
+                          bloqueada ? 'border-slate-700 opacity-50 cursor-not-allowed' :
                           elegida ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 hover:border-violet-500/60'
                         }`}
                       >
@@ -5822,6 +5877,7 @@ function UserJugar() {
                           {elegida && <span className="text-emerald-400">✓</span>}
                         </div>
                         {tomadaPorOtro && <div className="text-[10px] text-amber-300 mb-1">🎭 La juega: {g.delegadoNombre}</div>}
+                        {!tomadaPorOtro && g.solicitudPendiente && <div className="text-[10px] text-violet-300 mb-1">⏳ Esperando autorización</div>}
                         <MiniCard carton={g.cartones[0]} compact />
                       </button>
                     );
@@ -5829,7 +5885,7 @@ function UserJugar() {
                 </div>
                 {delegarError && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{delegarError}</div>}
                 <Button disabled={!delegarSeleccion.size || delegarGuardando} onClick={confirmarDelegar} className="w-full">
-                  {delegarGuardando ? 'Guardando...' : `Jugar ${delegarSeleccion.size || ''} carta(s) seleccionada(s)`}
+                  {delegarGuardando ? 'Enviando...' : `Pedir ${delegarSeleccion.size || ''} carta(s) seleccionada(s)`}
                 </Button>
               </div>
             )}
@@ -5927,6 +5983,14 @@ function UserJugar() {
         <div className="fixed bottom-4 right-4 z-40 max-w-xs w-full">
           <div className="pop-in bg-slate-800 border border-red-500/50 text-red-200 rounded-xl shadow-glow px-4 py-3 text-sm">
             ❌ {invalidoMsg}
+          </div>
+        </div>
+      )}
+
+      {solicitudMsg && (
+        <div className="fixed bottom-4 right-4 z-40 max-w-xs w-full">
+          <div className="pop-in bg-slate-800 border border-violet-500/50 text-violet-200 rounded-xl shadow-glow px-4 py-3 text-sm">
+            {solicitudMsg}
           </div>
         </div>
       )}
@@ -6147,6 +6211,20 @@ function UserJugar() {
             </div>
           </div>
         </div>
+        {solicitudesRecibidas.length > 0 && (
+          <Card className="border-violet-500/50 bg-violet-500/5 space-y-2 mb-4">
+            <h3 className="text-sm font-bold text-violet-300">🎭 Te piden jugar tus cartas</h3>
+            {solicitudesRecibidas.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-2 bg-slate-800/60 rounded-lg px-3 py-2 text-sm flex-wrap">
+                <span><b className="text-slate-100">{s.solicitanteNombre}</b> quiere jugar tu Carta {s.grupos.join(', ')}</span>
+                <div className="flex gap-2 shrink-0">
+                  <Button variant="success" className="text-xs px-2.5 py-1.5" onClick={() => responderSolicitud(s.id, true)}>✅ Aprobar</Button>
+                  <Button variant="danger" className="text-xs px-2.5 py-1.5" onClick={() => responderSolicitud(s.id, false)}>❌ Rechazar</Button>
+                </div>
+              </div>
+            ))}
+          </Card>
+        )}
         {juegoSorteoId ? (
           <div className="space-y-4">
             <Card>
