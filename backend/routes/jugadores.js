@@ -28,10 +28,25 @@ router.get('/', requireAuth, requireAdmin, (req, res) => {
   res.json({ jugadores: rows.map(withStats) });
 });
 
+// No se puede borrar un jugador que ya tiene cartones o historial real (compras,
+// premios, tablero marcado): la base lo bloquea con una FK constraint (ventas/
+// ganadores/tablero_marcas apuntan a jugadores sin CASCADE ni SET NULL, a
+// propósito -- ese historial no debería poder desaparecer por accidente al
+// borrar el registro de sesión de alguien). Antes esto tiraba un 500 crudo
+// (SqliteError: FOREIGN KEY constraint failed) sin ningún aviso legible.
 router.delete('/:id', requireAuth, requireAdmin, (req, res) => {
   const jugador = db.prepare('SELECT nombre FROM jugadores WHERE id = ?').get(req.params.id);
+  if (!jugador) return res.status(404).json({ error: 'Jugador no encontrado' });
+  const tieneActividad =
+    db.prepare('SELECT 1 FROM cartones WHERE owner_id = ? LIMIT 1').get(req.params.id) ||
+    db.prepare('SELECT 1 FROM ventas WHERE jugador_id = ? LIMIT 1').get(req.params.id) ||
+    db.prepare('SELECT 1 FROM ganadores WHERE jugador_id = ? LIMIT 1').get(req.params.id) ||
+    db.prepare('SELECT 1 FROM tablero_marcas WHERE jugador_id = ? LIMIT 1').get(req.params.id);
+  if (tieneActividad) {
+    return res.status(400).json({ error: 'No se puede eliminar: este jugador tiene cartones, compras o historial de premios. Solo se pueden eliminar jugadores sin actividad.' });
+  }
   db.prepare('DELETE FROM jugadores WHERE id = ?').run(req.params.id);
-  registrarLog(req, 'cartones', 'Eliminó un jugador', jugador?.nombre);
+  registrarLog(req, 'cartones', 'Eliminó un jugador', jugador.nombre);
   res.json({ ok: true });
 });
 

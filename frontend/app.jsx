@@ -4819,6 +4819,7 @@ function AdminJugadores() {
   const [verCartones, setVerCartones] = useState(null);
   const [cartonesJugador, setCartonesJugador] = useState([]);
   const [pagandoGrupo, setPagandoGrupo] = useState(null);
+  const [msg, setMsg] = useState('');
 
   function load() {
     setLoading(true);
@@ -4828,8 +4829,11 @@ function AdminJugadores() {
 
   async function eliminar(j) {
     if (!confirm(`¿Eliminar el registro de ${j.nombre}?`)) return;
-    await apiFetch(`/jugadores/${j.id}`, { method: 'DELETE' });
-    load();
+    setMsg('');
+    try {
+      await apiFetch(`/jugadores/${j.id}`, { method: 'DELETE' });
+      load();
+    } catch (e) { setMsg(`❌ ${e.message}`); }
   }
   async function abrirCartones(j) {
     setVerCartones(j);
@@ -4861,6 +4865,7 @@ function AdminJugadores() {
           <h3 className="font-bold text-fuchsia-100">Sesiones de Jugadores</h3>
           <Input placeholder="Buscar por nombre o WhatsApp..." className="w-64" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        {msg && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-3">{msg}</div>}
         {loading ? <Spinner /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
