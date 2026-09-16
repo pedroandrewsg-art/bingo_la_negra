@@ -7341,9 +7341,14 @@ function AdminConfiguracion() {
               {botEstado.conectado && (
                 <Button disabled={guardandoGrupo || !grupoElegido} onClick={guardarGrupoBot}>{guardandoGrupo ? 'Guardando...' : 'Guardar grupo'}</Button>
               )}
-              {(botEstado.conectado || botEstado.qrDataUrl) && (
-                <Button variant="danger" disabled={desconectandoBot} onClick={desconectarBot}>{desconectandoBot ? 'Desconectando...' : 'Desconectar'}</Button>
-              )}
+              {/* Antes solo aparecía con conectado/qrDataUrl -- si el bot quedaba
+                  en loop de "conectando" para siempre (credenciales viejas que
+                  WhatsApp rechaza sin mandar un logout explícito), ninguna de
+                  esas dos condiciones se cumplía y no había forma de resetear
+                  desde la UI. Ahora siempre está disponible: desconectar es
+                  seguro incluso sin sesión activa (borra credenciales y
+                  reintenta desde cero). */}
+              <Button variant="danger" disabled={desconectandoBot} onClick={desconectarBot}>{desconectandoBot ? 'Desconectando...' : 'Desconectar'}</Button>
             </div>
           </Card>
         </div>
