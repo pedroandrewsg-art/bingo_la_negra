@@ -20,6 +20,7 @@ const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
+  Browsers,
 } = require('@whiskeysockets/baileys');
 const db = require('./db');
 const { r2, BUCKET, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('./r2');
@@ -170,6 +171,14 @@ async function initWhatsappBot(io) {
     auth: state,
     logger: pino({ level: 'silent' }),
     printQRInTerminal: false,
+    // Huella de dispositivo propia -- por defecto Baileys manda "Mac OS /
+    // Chrome" para TODOS los bots sin excepción, así que los ~12 bots de
+    // este mismo servidor se presentan ante WhatsApp como el mismo
+    // dispositivo. Si WhatsApp frena una sesión puntual (ver el 403
+    // "Connection Failure" en bingo_la_negra, ago 2026), una huella distinta
+    // ayuda a que la vea como un dispositivo nuevo, no la misma sesión
+    // castigada insistiendo.
+    browser: Browsers.ubuntu('Bingo La Negra'),
   });
 
   sock.ev.on('creds.update', () => {
