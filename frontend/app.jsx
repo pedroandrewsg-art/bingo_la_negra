@@ -81,6 +81,20 @@ const CARD_THEMES = {
     nombre: 'Sin tema (clásico)',
     plano: true,
   },
+  'flores-amarillas': {
+    // Tema del 21 de septiembre (Día de la Primavera): fondo ilustrado de
+    // girasoles (cartonImagen), encabezado que alterna pétalo amarillo y
+    // hoja verde, casillas crema translúcidas y un girasol en el centro.
+    nombre: 'Flores Amarillas',
+    headerColores: ['#facc15', '#65a30d', '#facc15', '#65a30d', '#facc15'],
+    headerTexto: ['#14532d', '#ffffff', '#14532d', '#ffffff', '#14532d'],
+    numeroFondo: 'rgba(255, 251, 235, 0.9)',
+    numeroTexto: '#14532d',
+    cartonFondo: ['#14532d', '#3f6212', '#a16207'],
+    cartonImagen: girasolesFondoUri(),
+    bordeColor: '#fde047',
+    libre: '🌻',
+  },
   arcoiris: {
     nombre: 'Arcoíris Clásico',
     headerColores: ['#e11d48', '#f97316', '#f59e0b', '#059669', '#2563eb'],
@@ -821,10 +835,51 @@ Object.assign(CARD_THEMES, CARD_THEMES_GENERADOR);
 // del generador en el mismo orden/categorías que trae temasPredefinidos.js.
 const CARD_THEME_IDS = [
   'ninguno',
+  'flores-amarillas',
   'arcoiris', 'neon', 'dorado', 'tropical', 'fiesta', 'pastel', 'real', 'deportivo', 'navideno', 'halloween',
   ...CARD_THEMES_GENERADOR_IDS,
 ];
 const DEFAULT_CARD_THEME = 'arcoiris';
+
+// Fondo ilustrado del tema "Flores Amarillas" (21 de septiembre): un campo de
+// girasoles dibujado a mano en SVG, sin imágenes externas. El girasol y la
+// hoja se definen UNA sola vez (<defs>) y se reusan con <use>, así el fondo
+// pesa pocos KB aunque haya decenas de cartones en pantalla. Se ve en el
+// marco y entre las casillas (que son translúcidas, ver numeroFondo).
+function girasolesFondoUri() {
+  let petalos = '';
+  for (let i = 0; i < 18; i++) {
+    petalos += '<ellipse cx="0" cy="-66" rx="20" ry="42" transform="rotate(' + (i * 20) + ')" fill="#fde047" stroke="#ca8a04" stroke-width="1.2"/>';
+  }
+  for (let i = 0; i < 18; i++) {
+    petalos += '<ellipse cx="0" cy="-55" rx="17" ry="36" transform="rotate(' + (i * 20 + 10) + ')" fill="#facc15" stroke="#ca8a04" stroke-width="1"/>';
+  }
+  let semillas = '';
+  for (let k = 1; k < 60; k++) {
+    const a = k * 2.39996;
+    const d = 37 * Math.sqrt(k / 60);
+    semillas += '<circle cx="' + (Math.cos(a) * d).toFixed(1) + '" cy="' + (Math.sin(a) * d).toFixed(1) + '" r="2.6" fill="#a16207" opacity="0.9"/>';
+  }
+  const girasol = (cx, cy, r, rot) => '<use href="#g" transform="translate(' + cx + ' ' + cy + ') rotate(' + rot + ') scale(' + (r / 100) + ')"/>';
+  const hoja = (x, y, rot, s) => '<use href="#h" transform="translate(' + x + ' ' + y + ') rotate(' + rot + ') scale(' + s + ')"/>';
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 420" preserveAspectRatio="xMidYMid slice">' +
+    '<defs>' +
+    '<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14532d"/><stop offset="0.55" stop-color="#3f6212"/><stop offset="1" stop-color="#a16207"/></linearGradient>' +
+    '<radialGradient id="l" cx="50%" cy="42%" r="65%"><stop offset="0" stop-color="#fde047" stop-opacity="0.34"/><stop offset="1" stop-color="#fde047" stop-opacity="0"/></radialGradient>' +
+    '<radialGradient id="d"><stop offset="0" stop-color="#92400e"/><stop offset="0.65" stop-color="#451a03"/><stop offset="1" stop-color="#2a1103"/></radialGradient>' +
+    '<g id="h"><path d="M0 0 C22 -34 66 -34 90 0 C66 34 22 34 0 0Z" fill="#4d7c0f" stroke="#365314" stroke-width="1.5"/><path d="M6 0 L84 0" stroke="#365314" stroke-width="2"/></g>' +
+    '<g id="g">' + petalos + '<circle r="42" fill="url(#d)"/>' + semillas + '</g>' +
+    '</defs>' +
+    '<rect width="300" height="420" fill="url(#f)"/><rect width="300" height="420" fill="url(#l)"/>' +
+    hoja(60, 118, 35, 0.9) + hoja(250, 96, 150, 0.85) + hoja(262, 312, -35, 0.95) + hoja(30, 300, -140, 0.9) + hoja(118, 60, 0, 0.6) + hoja(190, 372, 200, 0.7) +
+    girasol(36, 46, 66, 12) + girasol(262, 34, 52, -16) + girasol(150, -4, 32, 28) +
+    girasol(304, 190, 58, 22) + girasol(-2, 212, 44, -12) +
+    girasol(22, 396, 68, 26) + girasol(260, 402, 60, -22) + girasol(148, 418, 36, 4) +
+    '</svg>';
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
 
 // 1 color = sólido, 2+ = degradado lineal en ese orden — mismo criterio que
 // fondoCss() en el generador de cartones (backend/render/sheetTemplate.js).
@@ -1825,7 +1880,7 @@ function MiniCard({ carton, onCellClick, showCercaDeGanar, letra, compact = true
         backgroundPosition: 'center',
         borderColor: tema.bordeColor,
       }
-    : { background: fondoCartonReal(tema), borderColor: tema.bordeColor };
+    : { background: tema.cartonImagen ? `url("${tema.cartonImagen}") center / cover no-repeat, ${fondoCartonReal(tema)}` : fondoCartonReal(tema), borderColor: tema.bordeColor };
   return (
     <div
       className={`${plano ? '' : 'font-carton'} ${plano ? `bg-slate-800/70 ${style.border}` : ''} border-2 ${plano ? 'rounded-xl shadow' : 'rounded-2xl shadow-lg shadow-black/30'} ${compact ? 'p-1.5' : 'p-2'} ${cerca.length ? 'carton-cerca' : ''} ${resaltado ? 'carton-ganador' : ''}`}
