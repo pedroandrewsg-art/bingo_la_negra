@@ -924,6 +924,363 @@ function fondoCartonReal(tema) {
   return cartonFondoCss(colores);
 }
 
+// >>> FONDOS_ILUSTRADOS
+// Fondos ilustrados para TODOS los temas de cartón (21 de septiembre): igual
+// que "Flores Amarillas", cada tema lleva su propia ilustración dibujada en SVG
+// (sin imágenes externas) — dinosaurios con huellas y helechos, piratas con
+// calaveras y anclas, casino con naipes y fichas... — sobre un degradé propio,
+// con casillas translúcidas para que el dibujo se vea entre los números.
+// Cada fondo se genera una sola vez y solo cuando el tema se usa (getter con
+// caché), así que sumar temas no pesa al cargar la app.
+function fiRng(semilla) {
+  let s = (semilla >>> 0) || 1;
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+}
+function fiHash(t) {
+  let h = 2166136261;
+  for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+const fiN = (n) => Math.round(n * 10) / 10;
+const fiTrazo = (c) => mezclarColor(c, '#000000', 0.32);
+const fiLuz = (c) => mezclarColor(c, '#ffffff', 0.55);
+
+// Posiciones sobre el marco del cartón: 4 esquinas grandes + 4 bordes medios
+// (lo que queda a la vista alrededor de la grilla) y ítems extra en las orillas.
+function fiPosiciones(r, n) {
+  const p = [[20, 30, 1.95], [282, 26, 1.8], [24, 396, 1.95], [278, 400, 1.8], [150, 2, 1.05], [150, 420, 1.05], [-4, 208, 1.15], [304, 214, 1.15]]
+    .map(([x, y, s]) => ({ x, y, s, rot: r() * 360 }));
+  for (let i = 0; i < n; i++) {
+    const lado = Math.floor(r() * 4);
+    let x; let y;
+    if (lado === 0) { x = -6 + r() * 50; y = r() * 420; }
+    else if (lado === 1) { x = 256 + r() * 50; y = r() * 420; }
+    else if (lado === 2) { x = r() * 300; y = -6 + r() * 56; }
+    else { x = r() * 300; y = 364 + r() * 64; }
+    p.push({ x, y, s: 0.65 + r() * 0.6, rot: r() * 360 });
+  }
+  return p;
+}
+
+const fiEstrella = (c, st, puntas, R, rr) => {
+  let pts = '';
+  for (let i = 0; i < puntas * 2; i++) {
+    const a = (Math.PI / puntas) * i - Math.PI / 2;
+    const rad = i % 2 === 0 ? R : rr;
+    pts += fiN(Math.cos(a) * rad) + ',' + fiN(Math.sin(a) * rad) + ' ';
+  }
+  return '<polygon points="' + pts + '" fill="' + c + '" stroke="' + st + '" stroke-width="1.2" stroke-linejoin="round"/>';
+};
+const fiP = (d, fill, st, w) => '<path d="' + d + '" fill="' + fill + '" stroke="' + (st || 'none') + '" stroke-width="' + (w || 1.3) + '" stroke-linejoin="round" stroke-linecap="round"/>';
+const fiL = (d, st, w) => '<path d="' + d + '" fill="none" stroke="' + st + '" stroke-width="' + (w || 2) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+const fiC = (x, y, r, fill, st, w) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + fill + '"' + (st ? ' stroke="' + st + '" stroke-width="' + (w || 1.2) + '"' : '') + '/>';
+const fiE = (x, y, rx, ry, fill, st, rot) => '<ellipse cx="' + x + '" cy="' + y + '" rx="' + rx + '" ry="' + ry + '" fill="' + fill + '"' + (st ? ' stroke="' + st + '" stroke-width="1.2"' : '') + (rot ? ' transform="rotate(' + rot + ' ' + x + ' ' + y + ')"' : '') + '/>';
+const fiR = (x, y, w, h, fill, st, rx) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (rx || 0) + '" fill="' + fill + '"' + (st ? ' stroke="' + st + '" stroke-width="1.2"' : '') + '/>';
+
+// Cada ítem se dibuja centrado en (0,0), ~44px a escala 1. (c, c2) = colores
+// del tema; st = trazo oscuro. Los ítems "naturales" (pino, calavera...) usan
+// sus colores propios.
+const FI_ITEMS = {
+  // ---- flores y jardín
+  flor: (c, c2, st) => { let p = ''; for (let i = 0; i < 5; i++) p += '<ellipse cx="0" cy="-15" rx="9.5" ry="15" transform="rotate(' + (i * 72) + ')"/>'; return '<g fill="' + c + '" stroke="' + st + '" stroke-width="1.2">' + p + '</g>' + fiC(0, 0, 7, c2, st, 1); },
+  margarita: (c, c2, st) => { let p = ''; for (let i = 0; i < 10; i++) p += '<ellipse cx="0" cy="-16" rx="4.5" ry="10" transform="rotate(' + (i * 36) + ')"/>'; return '<g fill="' + fiLuz(c) + '" stroke="' + st + '" stroke-width="1">' + p + '</g>' + fiC(0, 0, 6.5, c, st, 1); },
+  rosa: (c, c2, st) => fiC(0, 0, 19, c, st, 1.4) + fiL('M0 0 C7 -2 7 -9 0 -9 C-9 -9 -11 2 -2 9 C9 13 18 2 15 -7', st, 1.7) + fiP('M-14 14 C-24 12 -26 22 -14 24Z M14 14 C24 12 26 22 14 24Z', '#16a34a', '#14532d', 1),
+  tulipan: (c, c2, st) => fiL('M0 6 L0 26', '#16a34a', 3.5) + fiP('M0 22 C-14 20 -18 8 -10 6Z', '#16a34a', '#14532d', 1) + fiP('M-13 -4 C-13 -22 -5 -25 0 -16 C5 -25 13 -22 13 -4 C13 9 -13 9 -13 -4Z', c, st, 1.4) + fiP('M0 -16 C-4 -8 -4 0 0 6 C4 0 4 -8 0 -16Z', c2, st, 0.8),
+  hibisco: (c, c2, st) => { let p = ''; for (let i = 0; i < 5; i++) p += '<ellipse cx="0" cy="-15" rx="12.5" ry="17" transform="rotate(' + (i * 72) + ')"/>'; return '<g fill="' + c + '" stroke="' + st + '" stroke-width="1.2">' + p + '</g>' + fiC(0, 0, 6, c2, st, 1) + fiL('M0 0 L14 -16', '#facc15', 2.4) + fiC(14, -16, 2.4, '#facc15'); },
+  lavanda: (c, c2, st) => { let p = fiL('M0 26 L0 -22', '#4d7c0f', 2.4); for (let i = 0; i < 6; i++) p += fiE(-5, -18 + i * 6, 3.8, 5.6, c, st, -20) + fiE(5, -15 + i * 6, 3.8, 5.6, c, st, 20); return p; },
+  hoja: (c, c2, st) => '<g transform="translate(-26 0)">' + fiP('M0 0 C12 -22 40 -22 52 0 C40 22 12 22 0 0Z', c, st, 1.3) + fiL('M4 0 L48 0', st, 1.4) + '</g>',
+  arce: (c, c2, st) => fiP('M0 -24 L5 -12 L14 -16 L11 -4 L24 -6 L14 4 L18 10 L4 8 L4 24 L-4 24 L-4 8 L-18 10 L-14 4 L-24 -6 L-11 -4 L-14 -16 L-5 -12Z', c, st, 1.4),
+  helecho: (c, c2, st) => { let p = fiL('M0 26 C2 6 -2 -10 0 -26', st, 2); for (let i = 0; i < 7; i++) { const y = 20 - i * 6.6; const l = 15 - i * 1.6; p += fiE(-l / 2 - 2, y, l / 2, 3, c, st, -25) + fiE(l / 2 + 2, y - 2, l / 2, 3, c, st, 25); } return p; },
+  // ---- naturaleza
+  hongo: (c, c2, st) => fiP('M-8 6 L-6 22 L6 22 L8 6Z', '#fef3c7', '#92400e', 1.1) + fiP('M-26 6 C-26 -22 26 -22 26 6Z', c, st, 1.4) + fiC(-11, -6, 3.6, '#fff') + fiC(6, -11, 4.2, '#fff') + fiC(14, -1, 2.8, '#fff'),
+  pino: (c, c2, st) => fiP('M0 -24 L14 -6 L7 -6 L18 10 L9 10 L22 26 L-22 26 L-9 10 L-18 10 L-7 -6 L-14 -6Z', '#15803d', '#14532d', 1.3) + fiR(-3, 26, 6, 7, '#78350f') + '<g transform="translate(0 -26) scale(0.42)">' + fiEstrella(c, st, 5, 22, 9) + '</g>',
+  bellota: (c, c2, st) => fiP('M-12 -2 C-12 20 12 20 12 -2Z', '#b45309', '#78350f', 1.2) + fiP('M-15 -2 C-15 -18 15 -18 15 -2Z', '#78350f', '#451a03', 1.2) + fiL('M0 -16 L0 -24', '#78350f', 3),
+  luciernaga: (c) => fiC(0, 0, 13, '#fde047').replace('/>', ' opacity="0.22"/>') + fiC(0, 0, 6, '#fde047').replace('/>', ' opacity="0.45"/>') + fiC(0, 0, 2.6, '#fef9c3'),
+  cactus: (c, c2, st) => fiL('M-6 4 L-15 4 L-15 -8', '#16a34a', 7.5) + fiL('M6 -2 L15 -2 L15 -14', '#16a34a', 7.5) + fiR(-7, -24, 14, 48, '#16a34a', '#14532d', 7) + fiC(0, -24, 3.2, c) + fiL('M-2 -12 L-2 8 M3 -14 L3 6', '#14532d', 0.9),
+  palmera: (c, c2, st) => { let l = ''; for (let i = 0; i < 5; i++) l += '<g transform="translate(0 -14) rotate(' + (-100 + i * 50) + ')">' + fiP('M0 0 C8 -8 26 -6 34 6 C22 0 8 0 0 0Z', '#16a34a', '#14532d', 1) + '</g>'; return fiP('M-3 24 C-2 8 4 -2 2 -14 L6 -14 C8 0 4 10 5 24Z', '#92400e', '#451a03', 1) + l + fiC(-4, -12, 3.4, '#78350f') + fiC(5, -10, 3.4, '#78350f'); },
+  pina: (c, c2, st) => { let hh = ''; for (let i = -2; i <= 2; i++) hh += fiP('M0 -14 C' + (i * 6) + ' -24 ' + (i * 9) + ' -30 ' + (i * 11) + ' -32 C' + (i * 4) + ' -24 ' + (i * 2) + ' -18 0 -14Z', '#16a34a', '#14532d', 0.9); return hh + fiE(0, 6, 15, 20, '#f59e0b', '#92400e') + fiL('M-12 -6 L12 18 M-14 4 L6 22 M12 -6 L-12 18 M14 4 L-6 22', '#92400e', 1); },
+  sol: (c, c2, st) => { let r = ''; for (let i = 0; i < 12; i++) r += '<path d="M0 -21 L4 -30 L-4 -30Z" transform="rotate(' + (i * 30) + ')"/>'; return '<g fill="' + c2 + '" stroke="' + st + '" stroke-width="0.9">' + r + '</g>' + fiC(0, 0, 17, c, st, 1.4) + fiC(-5, -5, 4, '#fff').replace('/>', ' opacity="0.5"/>'); },
+  montana: (c, c2, st) => fiP('M-28 22 L-4 -22 L8 -4 L14 -12 L30 22Z', c, st, 1.4) + fiP('M-4 -22 L-12 -8 L-6 -12 L-2 -6 L4 -12 L8 -4Z', '#f8fafc', '#94a3b8', 0.9),
+  // ---- mar
+  ola: (c) => fiL('M-40 -6 Q-30 -18 -20 -6 T0 -6 T20 -6 T40 -6', c, 4) + fiL('M-40 6 Q-30 -6 -20 6 T0 6 T20 6 T40 6', c, 3).replace('/>', ' opacity="0.7"/>'),
+  burbuja: (c) => '<circle r="16" fill="' + c + '" fill-opacity="0.14" stroke="' + c + '" stroke-width="2.4"/>' + fiC(-6, -6, 3.5, '#fff').replace('/>', ' opacity="0.8"/>'),
+  concha: (c, c2, st) => fiP('M0 20 C-26 10 -26 -14 0 -22 C26 -14 26 10 0 20Z', c, st, 1.3) + fiL('M0 20 L0 -20 M0 20 L-14 -14 M0 20 L14 -14', st, 1.1),
+  estrellamar: (c, c2, st) => fiEstrella(c, st, 5, 25, 11) + fiC(0, 0, 3, c2) + fiC(0, -13, 1.6, c2) + fiC(12, -4, 1.6, c2) + fiC(-12, -4, 1.6, c2),
+  pez: (c, c2, st) => fiE(-2, 0, 17, 11, c, st) + fiP('M14 0 L27 -10 L27 10Z', c2, st, 1.2) + fiC(-9, -3, 2.6, '#fff') + fiC(-9, -3, 1.1, '#0f172a') + fiL('M-2 -10 C2 -4 2 4 -2 10', st, 1),
+  sombrilla: (c, c2, st) => fiL('M0 -4 L0 26', '#78350f', 3) + fiP('M-26 0 A26 26 0 0 1 26 0Z', c, st, 1.4) + fiP('M-9 0 A26 26 0 0 1 0 -26 A26 26 0 0 1 9 0Z', c2, st, 1) + fiL('M-26 0 Q-13 6 0 0 Q13 6 26 0', st, 1.2),
+  helado: (c, c2, st) => fiP('M-12 2 L0 30 L12 2Z', '#d97706', '#92400e', 1.2) + fiC(0, -4, 14, c, st, 1.3) + fiC(0, -18, 11, c2, st, 1.3) + fiC(0, -30, 3.6, '#dc2626'),
+  barco: (c, c2, st) => fiL('M0 -26 L0 12', '#78350f', 2.4) + fiP('M2 -24 L24 6 L2 6Z', '#f8fafc', '#94a3b8', 1) + fiP('M-2 -18 L-16 6 L-2 6Z', '#e2e8f0', '#94a3b8', 1) + fiP('M-22 10 L22 10 L14 22 L-14 22Z', c, st, 1.3) + fiP('M0 -26 L10 -22 L0 -18Z', c2, st, 0.8),
+  ancla: (c, c2, st) => fiC(0, -19, 4.5, 'none', c, 3) + fiL('M0 -14 L0 20 M-10 -7 L10 -7 M-22 6 C-20 22 20 22 22 6', c, 3.2) + fiL('M-26 8 L-21 3 L-16 9 M26 8 L21 3 L16 9', c, 3),
+  // ---- fiestas
+  globo: (c, c2, st) => fiE(0, -6, 14, 18, c, st) + fiP('M-3 12 L3 12 L0 17Z', c, st, 1) + fiL('M0 17 C-7 26 7 32 0 42', st, 1.2) + fiE(-5, -13, 3, 5, '#fff', null, 25).replace('/>', ' opacity="0.5"/>'),
+  papel: (c) => fiR(-9, -4, 18, 8, c, null, 2),
+  punto: (c) => fiC(0, 0, 6, c),
+  serpentina: (c) => fiL('M-24 0 C-16 -14 -8 14 0 0 C8 -14 16 14 24 0', c, 4),
+  gorrofiesta: (c, c2, st) => fiP('M0 -22 L18 16 L-18 16Z', c, st, 1.4) + fiC(-5, 2, 3, c2) + fiC(5, -4, 3, c2) + fiC(6, 9, 3, c2) + fiC(0, -24, 5, c2, st, 1) + fiL('M-18 16 Q0 22 18 16', st, 1.4),
+  pastel: (c, c2, st) => fiR(-21, 2, 42, 20, c, st, 3) + fiR(-21, -8, 42, 11, c2, st, 3) + fiR(-2, -22, 4, 14, '#fde68a', st, 1) + fiE(0, -25, 3, 4.6, '#f97316') + fiL('M-21 12 Q-14 8 -7 12 T7 12 T21 12', '#fff', 2),
+  regalo: (c, c2, st) => fiR(-20, -4, 40, 26, c, st, 2) + fiR(-4, -4, 8, 26, c2) + fiR(-22, -14, 44, 11, c, st, 2) + fiR(-4, -14, 8, 11, c2) + fiL('M0 -14 C-14 -32 -22 -18 0 -14 C22 -18 14 -32 0 -14Z', c2, 3),
+  caramelo: (c, c2, st) => fiP('M-12 0 L-27 -11 L-27 11Z M12 0 L27 -11 L27 11Z', c2, st, 1.2) + fiC(0, 0, 14, c, st, 1.4) + fiL('M-6 -11 Q0 0 -6 11 M5 -12 Q10 0 5 12', '#fff', 2.4),
+  piruleta: (c, c2, st) => fiR(-2, 8, 4, 22, '#f8fafc', '#94a3b8', 1) + fiC(0, -6, 17, c, st, 1.4) + fiL('M0 -6 C4 -6 4 -11 0 -11 C-7 -11 -8 -2 -1 2 C8 5 14 -3 11 -10', c2, 3),
+  cupcake: (c, c2, st) => fiP('M-14 4 L-11 24 L11 24 L14 4Z', c2, st, 1.3) + fiL('M-6 6 L-5 22 M0 6 L0 22 M6 6 L5 22', st, 1) + fiP('M-17 4 C-22 -12 22 -12 17 4Z', c, st, 1.4) + fiC(0, -14, 4, '#dc2626', '#7f1d1d', 1),
+  mascara: (c, c2, st) => fiP('M-27 -4 C-18 -18 -6 -12 0 -12 C6 -12 18 -18 27 -4 C23 10 10 12 0 7 C-10 12 -23 10 -27 -4Z', c, st, 1.4) + fiE(-11, -3, 6.5, 4, '#0f172a') + fiE(11, -3, 6.5, 4, '#0f172a') + fiL('M-22 -12 L-30 -26 M22 -12 L30 -26', c2, 2.6) + fiC(0, -4, 2.4, c2),
+  pluma: (c, c2, st) => fiP('M0 -27 C17 -14 17 9 0 27 C-17 9 -17 -14 0 -27Z', c, st, 1.3) + fiL('M0 -24 L0 30', st, 1.5) + fiL('M0 -10 L9 -16 M0 0 L11 -8 M0 10 L9 3 M0 -10 L-9 -16 M0 0 L-11 -8 M0 10 L-9 3', c2, 1.2),
+  flordelis: (c, c2, st) => fiP('M0 -25 C9 -14 9 -3 0 8 C-9 -3 -9 -14 0 -25Z', c, st, 1.3) + fiP('M-3 6 C-19 -14 -27 2 -13 9 C-8 10 -4 9 -2 7Z', c, st, 1.3) + fiP('M3 6 C19 -14 27 2 13 9 C8 10 4 9 2 7Z', c, st, 1.3) + fiR(-11, 10, 22, 5, c2, st, 1.5) + fiP('M-8 15 L0 26 L8 15Z', c, st, 1.1),
+  corona: (c, c2, st) => fiP('M-23 15 L-25 -13 L-11 0 L0 -20 L11 0 L25 -13 L23 15Z', c, st, 1.4) + fiR(-23, 15, 46, 7, c2, st, 1.5) + fiC(-25, -14, 2.8, c2) + fiC(0, -21, 2.8, c2) + fiC(25, -14, 2.8, c2) + fiC(0, 6, 3, '#dc2626', st, 0.8),
+  fuego: (c, c2, st) => { let l = ''; for (let i = 0; i < 12; i++) l += '<path d="M0 -8 L0 -22" transform="rotate(' + (i * 30) + ')"/>' + '<circle cx="0" cy="-27" r="2.3" transform="rotate(' + (i * 30) + ')"/>'; return '<g stroke="' + c + '" stroke-width="2.6" stroke-linecap="round" fill="' + c2 + '">' + l + '</g>' + fiC(0, 0, 3.4, c2); },
+  copa: (c, c2, st) => fiP('M-9 -24 L9 -24 L7 4 C6 11 -6 11 -7 4Z', c, st, 1.3).replace('fill="' + c + '"', 'fill="' + c + '" fill-opacity="0.4"') + fiL('M0 10 L0 24 M-10 24 L10 24', st, 2.6) + fiC(-2, -8, 1.6, '#fff') + fiC(2, -15, 1.3, '#fff') + fiC(1, -3, 1.2, '#fff'),
+  huevo: (c, c2, st) => fiE(0, 0, 16, 21, c, st) + fiL('M-15 4 L-9 -3 L-3 4 L3 -3 L9 4 L15 -3', c2, 3) + fiC(-6, 12, 2.2, c2) + fiC(6, 12, 2.2, c2) + fiC(0, -12, 2.4, c2),
+  conejo: (c, c2, st) => fiE(-8, -19, 5, 13, '#fff7ed', st) + fiE(8, -19, 5, 13, '#fff7ed', st) + fiE(-8, -19, 2.4, 9, '#fbcfe8') + fiE(8, -19, 2.4, 9, '#fbcfe8') + fiC(0, 4, 16, '#fff7ed', st, 1.3) + fiC(-6, 1, 1.8, '#0f172a') + fiC(6, 1, 1.8, '#0f172a') + fiC(0, 7, 2.6, '#f9a8d4'),
+  mariposa: (c, c2, st) => fiE(-13, -8, 13, 15, c, st, -22) + fiE(13, -8, 13, 15, c, st, 22) + fiE(-10, 12, 8, 10, c2, st, 18) + fiE(10, 12, 8, 10, c2, st, -18) + fiR(-1.6, -14, 3.2, 30, '#1e293b', null, 1.6) + fiL('M0 -14 L-6 -24 M0 -14 L6 -24', '#1e293b', 1.2),
+  // ---- historia y aventura
+  craneo: (c, c2, st) => fiL('M-22 -18 L22 22 M22 -18 L-22 22', '#e7e5e4', 5) + fiP('M-16 4 C-20 -16 -8 -24 0 -24 C8 -24 20 -16 16 4 L10 8 L10 16 L-10 16 L-10 8Z', '#f5f5f4', '#292524', 1.4) + fiC(-7, 0, 4.6, '#1c1917') + fiC(7, 0, 4.6, '#1c1917') + fiP('M0 6 L-2.6 11 L2.6 11Z', '#1c1917'),
+  moneda: (c, c2, st) => fiC(0, 0, 21, '#fbbf24', '#92400e', 1.5) + fiC(0, 0, 15, 'none', '#b45309', 1.5) + '<g transform="scale(0.55)">' + fiEstrella('#f59e0b', '#92400e', 5, 22, 9) + '</g>',
+  huella: (c, c2, st) => fiE(0, 8, 13, 11, c) + fiC(-15, -6, 5.5, c) + fiC(-5, -16, 5.5, c) + fiC(5, -16, 5.5, c) + fiC(15, -6, 5.5, c),
+  huelladino: (c, c2, st) => '<g fill="' + c + '" stroke="' + st + '" stroke-width="1">' + fiP('M0 24 L-6 -4 L0 -24 L6 -4Z', c, st, 1) + '<g transform="rotate(-32 0 24)">' + fiP('M0 24 L-5 -2 L0 -20 L5 -2Z', c, st, 1) + '</g><g transform="rotate(32 0 24)">' + fiP('M0 24 L-5 -2 L0 -20 L5 -2Z', c, st, 1) + '</g></g>',
+  huevodino: (c, c2, st) => fiE(0, 0, 16, 21, '#fef3c7', '#a16207') + fiC(-6, -6, 3.4, c) + fiC(6, 4, 4.2, c) + fiC(-4, 12, 2.6, c) + fiC(5, -13, 2.2, c),
+  hueso: (c, c2, st) => fiR(-17, -4, 34, 8, '#fef3c7', '#a16207', 3) + fiC(-19, -5, 5, '#fef3c7', '#a16207', 1.2) + fiC(-19, 5, 5, '#fef3c7', '#a16207', 1.2) + fiC(19, -5, 5, '#fef3c7', '#a16207', 1.2) + fiC(19, 5, 5, '#fef3c7', '#a16207', 1.2),
+  carpa: (c, c2, st) => fiP('M-26 6 L0 -20 L26 6Z', c, st, 1.4) + fiP('M-9 6 L0 -20 L9 6Z', c2, st, 1) + fiR(-26, 6, 52, 17, c2, st, 1) + fiP('M-7 23 L0 10 L7 23Z', '#7f1d1d', st, 1) + fiL('M0 -20 L0 -30', st, 2) + fiP('M0 -30 L10 -27 L0 -24Z', '#facc15', st, 0.8),
+  payaso: (c, c2, st) => fiC(-21, -8, 9, c, st, 1) + fiC(21, -8, 9, c, st, 1) + fiC(0, 0, 19, '#fde68a', st, 1.3) + fiC(0, 3, 5.2, '#dc2626', '#7f1d1d', 1) + fiC(-7, -4, 2.4, '#0f172a') + fiC(7, -4, 2.4, '#0f172a') + fiL('M-9 10 Q0 18 9 10', '#dc2626', 2.4),
+  gorropayaso: (c, c2, st) => fiP('M0 -26 L19 18 L-19 18Z', c, st, 1.4) + fiC(-5, 4, 3.2, c2) + fiC(5, -5, 3.2, c2) + fiC(7, 10, 3.2, c2) + fiC(0, -27, 5.5, c2, st, 1) + fiL('M-19 18 Q0 25 19 18', c2, 3),
+  pop: (c, c2, st) => fiEstrella(c, st, 12, 25, 15) + fiEstrella(c2, 'none', 12, 17, 10).replace('stroke-width="1.2"', 'stroke-width="0"'),
+  rayo: (c, c2, st) => fiP('M5 -26 L-13 4 L-2 4 L-7 26 L14 -8 L3 -8Z', c, st, 1.4),
+  // ---- espacio y tecnología
+  planeta: (c, c2, st) => '<g transform="rotate(-22)">' + fiE(0, 0, 33, 9, 'none', null).replace('fill="none"', 'fill="none" stroke="' + c2 + '" stroke-width="3.4"') + '</g>' + fiC(0, 0, 16, c, st, 1.4) + fiL('M-13 -6 Q0 -2 13 -8 M-15 4 Q0 8 15 2', st, 1) + '<path d="M-31 5 A33 9 -22 0 0 31 -5" fill="none" stroke="' + c2 + '" stroke-width="3.4"/>',
+  cohete: (c, c2, st) => fiP('M-6 14 L-14 24 L-6 22Z M6 14 L14 24 L6 22Z', c2, st, 1.1) + fiP('M0 -27 C13 -14 13 6 9 16 L-9 16 C-13 6 -13 -14 0 -27Z', '#f1f5f9', st, 1.4) + fiC(0, -6, 5.4, c, st, 1.2) + fiP('M-5 16 L0 30 L5 16Z', '#f97316', '#c2410c', 1),
+  ovni: (c, c2, st) => fiP('M-12 -2 C-12 -18 12 -18 12 -2Z', '#bae6fd', st, 1.2) + fiE(0, 2, 27, 9, c, st) + fiC(-14, 3, 2.2, '#fde047') + fiC(0, 5, 2.2, '#fde047') + fiC(14, 3, 2.2, '#fde047'),
+  luna: (c, c2, st) => fiP('M2 -24 A24 24 0 1 0 24 6 A19 19 0 1 1 2 -24Z', c, st, 1.3),
+  estrella: (c, c2, st) => fiEstrella(c, st, 5, 22, 9),
+  chispa: (c, c2, st) => fiP('M0 -22 Q3 -3 22 0 Q3 3 0 22 Q-3 3 -22 0 Q-3 -3 0 -22Z', c, st, 1),
+  pixel: (c) => '<g fill="' + c + '"><rect x="-4" y="-14" width="8" height="8"/><rect x="-12" y="-6" width="8" height="8"/><rect x="-4" y="-6" width="8" height="8"/><rect x="4" y="-6" width="8" height="8"/><rect x="-4" y="2" width="8" height="8"/><rect x="-12" y="10" width="8" height="6"/><rect x="4" y="10" width="8" height="6"/></g>',
+  joystick: (c, c2, st) => fiR(-21, 8, 42, 15, c, st, 4) + fiL('M0 8 L0 -10', '#e5e7eb', 5) + fiC(0, -14, 9.5, c2, st, 1.3) + fiC(-13, 15, 2.6, '#fde047') + fiC(13, 15, 2.6, '#f472b6'),
+  moneda2: (c) => fiC(0, 0, 18, c),
+  engranaje: (c, c2, st) => { let d = ''; for (let i = 0; i < 8; i++) d += '<rect x="-4" y="-25" width="8" height="10" rx="1.5" transform="rotate(' + (i * 45) + ')"/>'; return '<g fill="' + c + '" stroke="' + st + '" stroke-width="1.1">' + d + '</g>' + fiC(0, 0, 18, c, st, 1.3) + fiC(0, 0, 7, 'none', st, 2.4); },
+  chip: (c, c2, st) => { let p = ''; for (let i = -2; i <= 2; i++) p += fiR(-3, i * 8 - 2, 6, 4, c2) .replace('x="-3"', 'x="-24"') + fiR(18, i * 8 - 2, 6, 4, c2); return p + fiR(-18, -18, 36, 36, c, st, 4) + fiR(-9, -9, 18, 18, 'none', st, 2) + fiC(-13, -13, 2, c2); },
+  robot: (c, c2, st) => fiL('M0 -16 L0 -26', st, 2) + fiC(0, -27, 3, '#f87171') + fiR(-19, -16, 38, 32, c, st, 6) + fiC(-8, -3, 5.4, c2, st, 1) + fiC(8, -3, 5.4, c2, st, 1) + fiR(-10, 7, 20, 5, '#0f172a', null, 2) + fiR(-24, -4, 5, 10, c2, st, 2) + fiR(19, -4, 5, 10, c2, st, 2),
+  // ---- casino y elegancia
+  ficha: (c, c2, st) => fiC(0, 0, 22, c, st, 1.4) + '<circle r="17" fill="none" stroke="#fff" stroke-width="3.2" stroke-dasharray="6 5"/>' + fiC(0, 0, 10, c2, st, 1.2),
+  pica: (c, c2, st) => fiP('M0 -22 C-6 -10 -22 -6 -22 8 C-22 17 -11 19 -6 12 C-6 18 -8 22 -11 25 L11 25 C8 22 6 18 6 12 C11 19 22 17 22 8 C22 -6 6 -10 0 -22Z', c, st, 1.3),
+  trebol: (c, c2, st) => fiC(0, -11, 9.5, c, st, 1.2) + fiC(-10, 5, 9.5, c, st, 1.2) + fiC(10, 5, 9.5, c, st, 1.2) + fiP('M-3 6 C-3 16 -6 22 -9 25 L9 25 C6 22 3 16 3 6Z', c, st, 1.2),
+  diamante: (c, c2, st) => fiP('M0 -25 L16 0 L0 25 L-16 0Z', c, st, 1.4),
+  dado: (c, c2, st) => fiR(-18, -18, 36, 36, '#fff', '#0f172a', 6) + fiC(-9, -9, 3.2, c) + fiC(9, -9, 3.2, c) + fiC(0, 0, 3.2, c) + fiC(-9, 9, 3.2, c) + fiC(9, 9, 3.2, c),
+  perla: (c) => fiC(0, 0, 12, '#f8fafc', '#cbd5e1', 1.2) + fiC(-4, -4, 3.6, '#fff'),
+  gota: (c, c2, st) => fiP('M0 -24 C12 -8 16 0 16 8 C16 18 8 24 0 24 C-8 24 -16 18 -16 8 C-16 0 -12 -8 0 -24Z', c, st, 1.3) + fiE(-6, 8, 3, 6, '#fff', null, 15).replace('/>', ' opacity="0.5"/>'),
+  gema: (c, c2, st) => fiP('M-20 -6 L-10 -20 L10 -20 L20 -6 L0 22Z', c, st, 1.4) + '<path d="M-20 -6 L20 -6 M-10 -20 L-5 -6 L0 22 M10 -20 L5 -6 L0 22" stroke="#fff" stroke-opacity="0.6" stroke-width="1" fill="none"/>',
+  abanico: (c, c2, st) => { let l = ''; for (let i = 0; i < 7; i++) { const a = Math.PI * (i / 6); l += '<path d="M0 0 L' + fiN(-Math.cos(a) * 36) + ' ' + fiN(-Math.sin(a) * 36) + '"/>'; } return '<g stroke="' + c + '" stroke-width="2" fill="none" stroke-linecap="round" transform="translate(0 12)">' + l + '<path d="M-36 0 A36 36 0 0 1 36 0"/><path d="M-24 0 A24 24 0 0 1 24 0"/><path d="M-12 0 A12 12 0 0 1 12 0"/></g>'; },
+  rombo: (c, c2, st) => fiP('M0 -24 L16 0 L0 24 L-16 0Z', 'none', c, 2.4) + fiP('M0 -11 L7.5 0 L0 11 L-7.5 0Z', c),
+  aro: (c) => fiC(0, 0, 18, 'none', c, 2.6) + fiC(0, 0, 8, 'none', c, 1.6),
+  cruz: (c) => fiL('M0 -16 L0 16 M-16 0 L16 0', c, 3),
+  roseta: (c, c2, st) => { let d = ''; for (let i = 0; i < 8; i++) { const a = (Math.PI / 4) * i; d += fiC(fiN(Math.cos(a) * 26), fiN(Math.sin(a) * 26), 3.2, c2); } return d + fiC(0, 0, 22, c, st, 1.2) + fiC(0, 0, 15, c2) + fiC(0, 0, 9, c) + fiC(0, 0, 3.5, '#fff'); },
+  nazar: (c, c2, st) => fiC(0, 0, 23, '#1d4ed8', '#1e3a8a', 1.4) + fiC(0, 0, 16.5, '#f8fafc') + fiC(0, 0, 10.5, '#38bdf8') + fiC(0, 0, 5, '#0f172a'),
+  // ---- otros
+  corazon: (c, c2, st) => fiP('M0 22 C-32 -2 -26 -26 -11 -26 C-4 -26 0 -20 0 -16 C0 -20 4 -26 11 -26 C26 -26 32 -2 0 22Z', c, st, 1.4) + fiE(-11, -13, 5, 3, '#fff', null, -30).replace('/>', ' opacity="0.5"/>'),
+  copo: (c) => { const brazo = '<path d="M0 -24 L0 24 M-6 -17 L0 -11 L6 -17 M-6 17 L0 11 L6 17"/>'; return '<g stroke="' + c + '" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none">' + brazo + '<g transform="rotate(60)">' + brazo + '</g><g transform="rotate(120)">' + brazo + '</g></g>'; },
+  munecodenieve: (c, c2, st) => fiC(0, 14, 13, '#f8fafc', '#94a3b8', 1.2) + fiC(0, -6, 10, '#f8fafc', '#94a3b8', 1.2) + fiP('M-9 -14 L9 -14 L7 -26 L-7 -26Z', c2, st, 1.1) + fiR(-12, -16, 24, 4, c2, st, 1) + fiC(-3.5, -8, 1.3, '#0f172a') + fiC(3.5, -8, 1.3, '#0f172a') + fiP('M0 -5 L9 -3 L0 -2Z', '#f97316') + fiC(0, 12, 1.4, '#0f172a') + fiC(0, 18, 1.4, '#0f172a'),
+  campana: (c, c2, st) => fiP('M-14 12 C-14 -2 -12 -16 0 -18 C12 -16 14 -2 14 12Z', c, st, 1.4) + fiR(-18, 12, 36, 4, c, st, 2) + fiC(0, 21, 3.6, c2, st, 1) + fiC(0, -20, 2.6, c2),
+  baston: (c) => fiL('M6 26 L6 -8 C6 -24 -16 -24 -16 -8', '#f8fafc', 9) + '<path d="M6 26 L6 -8 C6 -24 -16 -24 -16 -8" fill="none" stroke="' + c + '" stroke-width="9" stroke-dasharray="5 6"/>',
+  bolanavidad: (c, c2, st) => fiC(0, 4, 17, c, st, 1.4) + fiR(-4, -16, 8, 6, '#fbbf24', '#92400e', 1) + fiL('M0 -16 C-4 -24 4 -24 0 -30', '#fbbf24', 1.6) + fiL('M-15 4 Q0 12 15 4', c2, 2.4) + fiE(-7, -3, 3.4, 6, '#fff', null, 30).replace('/>', ' opacity="0.45"/>'),
+  acebo: (c, c2, st) => fiP('M0 4 C-10 -14 -30 -6 -26 8 C-14 14 -4 10 0 4Z', '#15803d', '#14532d', 1.2) + fiP('M0 4 C10 -14 30 -6 26 8 C14 14 4 10 0 4Z', '#15803d', '#14532d', 1.2) + fiC(-5, 8, 5, '#dc2626', '#7f1d1d', 1) + fiC(5, 8, 5, '#dc2626', '#7f1d1d', 1) + fiC(0, 15, 5, '#dc2626', '#7f1d1d', 1),
+  fantasma: (c, c2, st) => fiP('M-16 20 L-16 -6 C-16 -26 16 -26 16 -6 L16 20 L10 14 L4 20 L-2 14 L-8 20 L-12 14Z', '#f8fafc', '#94a3b8', 1.3) + fiE(-6, -6, 3, 4.5, '#1e293b') + fiE(6, -6, 3, 4.5, '#1e293b') + fiE(0, 5, 3.2, 4, '#1e293b'),
+  telarana: (c) => { let l = ''; for (let i = 0; i < 6; i++) l += '<path d="M0 0 L' + fiN(Math.cos(i * Math.PI / 6) * 40) + ' ' + fiN(Math.sin(i * Math.PI / 6) * 40) + '"/>'; let a = ''; [12, 22, 32].forEach((r) => { let d = ''; for (let i = 0; i <= 6; i++) d += (i ? 'L' : 'M') + fiN(Math.cos(i * Math.PI / 6) * r) + ' ' + fiN(Math.sin(i * Math.PI / 6) * r); a += '<path d="' + d + '"/>'; }); return '<g stroke="' + c + '" stroke-width="1.2" fill="none" opacity="0.85" transform="translate(-12 -12)">' + l + a + '</g>'; },
+  murcielago: (c) => fiP('M0 -2 C-5 -12 -17 -12 -28 -4 C-22 -2 -20 4 -16 5 C-12 3 -7 7 0 14 C7 7 12 3 16 5 C20 4 22 -2 28 -4 C17 -12 5 -12 0 -2Z', c) + fiC(-2.5, -3, 1.3, '#fde047') + fiC(2.5, -3, 1.3, '#fde047'),
+  calabaza: (c, c2, st) => fiE(0, 0, 22, 17, c, st) + fiL('M-8 -16 C-12 -4 -12 4 -8 16 M8 -16 C12 -4 12 4 8 16 M0 -17 L0 17', st, 1.1) + fiL('M-2 -17 L-1 -25 L4 -26', '#4d7c0f', 3.2) + fiP('M-9 -2 L-5 -6 L-2 -1Z M2 -1 L5 -6 L9 -2Z', '#1c1917') + fiP('M-7 6 L-3 9 L0 6 L3 9 L7 6 L4 11 L-4 11Z', '#1c1917'),
+  cuerno: (c, c2, st) => fiP('M-8 24 L0 -24 L8 24Z', '#fef9c3', '#ca8a04', 1.3) + fiL('M-6 14 L6 8 M-4 4 L4 -2 M-2 -8 L3 -12', c, 2.4) + fiEstrella(c2, st, 5, 6, 2.6).replace('<polygon', '<polygon transform="translate(12 -14)"'),
+  arcoiris: () => '<g fill="none" stroke-width="4.2" stroke-linecap="round"><path d="M-28 12 A28 28 0 0 1 28 12" stroke="#ef4444"/><path d="M-23 12 A23 23 0 0 1 23 12" stroke="#f59e0b"/><path d="M-18 12 A18 18 0 0 1 18 12" stroke="#22c55e"/><path d="M-13 12 A13 13 0 0 1 13 12" stroke="#3b82f6"/></g>',
+  nube: (c) => '<g fill="' + c + '" fill-opacity="0.95"><circle cx="-14" cy="4" r="11"/><circle cx="0" cy="-4" r="15"/><circle cx="15" cy="3" r="12"/><rect x="-25" y="4" width="50" height="11" rx="5.5"/></g>',
+  osito: (c, c2, st) => fiC(-14, -13, 7, c, st, 1.2) + fiC(14, -13, 7, c, st, 1.2) + fiC(0, 0, 19, c, st, 1.4) + fiE(0, 6, 8, 6.5, c2, st) + fiC(-7, -3, 2.2, '#0f172a') + fiC(7, -3, 2.2, '#0f172a') + fiE(0, 3, 2.6, 2, '#0f172a'),
+  chupon: (c, c2, st) => fiC(0, -14, 9, 'none', c, 3.4) + fiE(0, 2, 15, 8, c2, st) + fiP('M-5 8 C-5 20 5 20 5 8Z', c, st, 1.2),
+  lazo: (c, c2, st) => fiP('M0 0 L-24 -14 C-28 -2 -28 6 -24 14Z M0 0 L24 -14 C28 -2 28 6 24 14Z', c, st, 1.3) + fiC(0, 0, 6.5, c2, st, 1.2) + fiP('M-3 6 L-9 24 L-3 20Z M3 6 L9 24 L3 20Z', c2, st, 1),
+  anillos: (c, c2, st) => fiC(-9, 4, 14, 'none', c, 4.2) + fiC(9, 4, 14, 'none', c2, 4.2) + fiP('M9 -16 L14 -22 L9 -28 L4 -22Z', '#e0f2fe', '#38bdf8', 1),
+  birrete: (c, c2, st) => fiP('M-15 6 L-15 20 C-7 27 7 27 15 20 L15 6 L0 14Z', '#334155', '#0f172a', 1.2) + fiP('M0 -16 L31 0 L0 16 L-31 0Z', '#1e293b', '#0f172a', 1.4) + fiL('M26 2 L26 20', c, 2.6) + fiC(26, 22, 3.4, c),
+  libro: (c, c2, st) => fiP('M0 -14 C-10 -20 -22 -18 -27 -14 L-27 15 C-22 11 -10 9 0 15Z', '#fff', st, 1.3) + fiP('M0 -14 C10 -20 22 -18 27 -14 L27 15 C22 11 10 9 0 15Z', '#f8fafc', st, 1.3) + fiL('M-22 -8 C-14 -10 -8 -8 -4 -5 M-22 -1 C-14 -3 -8 -1 -4 2 M22 -8 C14 -10 8 -8 4 -5 M22 -1 C14 -3 8 -1 4 2', c, 1.3),
+  manzana: (c, c2, st) => fiP('M0 -12 C-8 -20 -26 -14 -22 4 C-20 18 -8 24 0 20 C8 24 20 18 22 4 C26 -14 8 -20 0 -12Z', '#dc2626', '#7f1d1d', 1.4) + fiL('M0 -12 C0 -20 4 -24 8 -26', '#78350f', 3) + fiP('M4 -20 C10 -28 20 -24 18 -18 C12 -16 8 -18 4 -20Z', '#16a34a', '#14532d', 1) + fiE(-10, -2, 3, 6, '#fff', null, 20).replace('/>', ' opacity="0.4"/>'),
+  lapiz: (c, c2, st) => '<g transform="rotate(-45)">' + fiR(-6, -22, 12, 38, '#fbbf24', '#b45309', 1) + fiP('M-6 16 L0 28 L6 16Z', '#fde68a', '#b45309', 1) + fiP('M-2 24 L0 28 L2 24Z', '#1e293b') + fiR(-6, -30, 12, 8, c, st, 2) + fiR(-6, -23, 12, 3, '#94a3b8') + '</g>',
+  corbata: (c, c2, st) => fiP('M-7 -22 L7 -22 L4 -13 L-4 -13Z', c, st, 1.2) + fiP('M-4 -13 L4 -13 L11 20 L0 27 L-11 20Z', c, st, 1.3) + fiL('M-6 -2 L6 0 M-8 8 L8 10', c2, 2.4),
+  bigote: (c, c2, st) => fiP('M0 2 C-6 -8 -18 -8 -27 0 C-20 -2 -14 3 -8 9 C-4 11 0 9 0 9 C0 9 4 11 8 9 C14 3 20 -2 27 0 C18 -8 6 -8 0 2Z', c, st, 1.3),
+  copaTrofeo: (c, c2, st) => fiL('M-14 -14 C-27 -14 -25 -1 -12 -1 M14 -14 C27 -14 25 -1 12 -1', c, 3) + fiP('M-14 -22 L14 -22 C14 -4 8 6 0 8 C-8 6 -14 -4 -14 -22Z', c, st, 1.4) + fiR(-3, 8, 6, 8, c, st, 1) + fiR(-12, 16, 24, 6, c2, st, 2),
+  balon: (c, c2, st) => fiC(0, 0, 21, '#fff', '#0f172a', 1.4) + fiP('M0 -8 L8 -2 L5 8 L-5 8 L-8 -2Z', '#0f172a') + fiL('M0 -8 L0 -20 M8 -2 L19 -6 M5 8 L12 17 M-5 8 L-12 17 M-8 -2 L-19 -6', '#0f172a', 1.6),
+};
+
+// Capas de fondo (se dibujan antes de los ítems).
+function fiFondo(tipo, col, r) {
+  let o = '';
+  if (tipo === 'polvo') {
+    for (let i = 0; i < 46; i++) o += fiC(fiN(r() * 300), fiN(r() * 420), fiN(0.8 + r() * 1.8), col[i % col.length]).replace('/>', ' opacity="' + fiN(0.35 + r() * 0.5) + '"/>');
+  } else if (tipo === 'reticula') {
+    let l = '';
+    for (let i = -420; i < 720; i += 38) l += '<path d="M' + i + ' 0 L' + (i + 420) + ' 420 M' + (i + 420) + ' 0 L' + i + ' 420"/>';
+    o += '<g stroke="' + col[0] + '" stroke-width="1.1" opacity="0.22" fill="none">' + l + '</g>';
+  } else if (tipo === 'bandas') {
+    let b = '';
+    for (let i = -8; i < 12; i++) b += fiR(i * 46, -200, 23, 820, col[i & 1 ? 1 % col.length : 0]);
+    o += '<g transform="rotate(-24 150 210)" opacity="0.18">' + b + '</g>';
+  } else if (tipo === 'sol') {
+    let rr = '';
+    for (let i = 0; i < 16; i++) {
+      const a1 = Math.PI + (Math.PI / 16) * i; const a2 = a1 + Math.PI / 32;
+      rr += '<path d="M150 440 L' + fiN(150 + Math.cos(a1) * 520) + ' ' + fiN(440 + Math.sin(a1) * 520) + ' L' + fiN(150 + Math.cos(a2) * 520) + ' ' + fiN(440 + Math.sin(a2) * 520) + 'Z"/>';
+    }
+    o += '<g fill="' + col[0] + '" opacity="0.2">' + rr + '</g>' + fiC(150, 440, 90, col[1 % col.length]).replace('/>', ' opacity="0.42"/>') + fiC(150, 440, 58, col[0]).replace('/>', ' opacity="0.5"/>');
+  } else if (tipo === 'mar') {
+    [[300, 0.22], [335, 0.28], [372, 0.34]].forEach(([y, op], k) => { o += '<path d="M-10 ' + y + ' Q20 ' + (y - 16) + ' 50 ' + y + ' T110 ' + y + ' T170 ' + y + ' T230 ' + y + ' T290 ' + y + ' T350 ' + y + ' L350 430 L-10 430Z" fill="' + col[k % col.length] + '" opacity="' + op + '"/>'; });
+  } else if (tipo === 'dunas') {
+    [[320, 0.25], [360, 0.32]].forEach(([y, op], k) => { o += '<path d="M-10 ' + y + ' C60 ' + (y - 40) + ' 120 ' + (y + 10) + ' 190 ' + (y - 24) + ' C240 ' + (y - 44) + ' 290 ' + (y - 10) + ' 320 ' + (y - 16) + ' L320 430 L-10 430Z" fill="' + col[k % col.length] + '" opacity="' + op + '"/>'; });
+    o += fiC(232, 62, 40, col[0]).replace('/>', ' opacity="0.3"/>');
+  } else if (tipo === 'nieve') {
+    for (let i = 0; i < 40; i++) o += fiC(fiN(r() * 300), fiN(r() * 420), fiN(1 + r() * 2.2), '#ffffff').replace('/>', ' opacity="' + fiN(0.4 + r() * 0.5) + '"/>');
+    let m = 'M-10 420';
+    for (let x = -10; x <= 310; x += 40) m += ' Q' + (x + 20) + ' ' + (388 - r() * 14) + ' ' + (x + 40) + ' 420';
+    o += '<path d="' + m + ' L310 430 L-10 430Z" fill="#ffffff" opacity="0.55"/>';
+  } else if (tipo === 'campo') {
+    let b = '';
+    for (let i = 0; i < 9; i++) b += fiR(0, i * 50, 300, 25, '#ffffff');
+    o += '<g opacity="0.07">' + b + '</g><g fill="none" stroke="#ffffff" stroke-width="2.2" opacity="0.3"><rect x="10" y="10" width="280" height="400" rx="6"/><path d="M10 210 L290 210"/><circle cx="150" cy="210" r="46"/><rect x="80" y="10" width="140" height="56"/><rect x="80" y="354" width="140" height="56"/></g>';
+  } else if (tipo === 'rombos') {
+    let d = '';
+    for (let y = -20; y < 440; y += 40) for (let x = -20 + ((y / 40) & 1 ? 20 : 0); x < 320; x += 40) d += '<path d="M' + x + ' ' + (y - 20) + ' L' + (x + 20) + ' ' + y + ' L' + x + ' ' + (y + 20) + ' L' + (x - 20) + ' ' + y + 'Z"/>';
+    o += '<g fill="' + col[0] + '" opacity="0.2">' + d + '</g>';
+  }
+  return o;
+}
+
+// Ficha de cada tema: base (degradé), col (colores de las ilustraciones),
+// items (dibujos, los 8 primeros van a las esquinas y bordes), fondo, n
+// (cantidad extra en las orillas), cel/celT (fondo/texto de las casillas).
+const FI_TEMAS = {
+  arcoiris: { base: ['#2e1065', '#1e1b4b', '#4c0519'], col: ['#f472b6', '#facc15', '#34d399', '#60a5fa'], items: ['bola', 'estrella', 'arcoiris', 'bola', 'chispa', 'punto', 'bola', 'chispa'], fondo: 'polvo', n: 14, cel: '#f8fafc', celT: '#1e1b4b' },
+  neon: { col: ['#e879f9', '#22d3ee', '#a3e635', '#fbbf24'], items: ['chispa', 'estrella', 'rayo', 'chispa', 'estrella', 'punto'], fondo: 'polvo', n: 16 },
+  dorado: { base: ['#451a03', '#78350f', '#1c1917'], col: ['#fcd34d', '#f59e0b', '#fde68a'], items: ['corona', 'rombo', 'abanico', 'chispa', 'rombo', 'estrella'], fondo: 'reticula', n: 12, cel: '#fffbeb', celT: '#78350f' },
+  tropical: { base: ['#134e4a', '#166534', '#365314'], col: ['#fb923c', '#f472b6', '#facc15', '#2dd4bf'], items: ['hibisco', 'palmera', 'pina', 'hoja', 'hibisco', 'sol', 'hoja'], fondo: '', n: 14, cel: '#f0fdfa', celT: '#134e4a' },
+  fiesta: { base: ['#701a75', '#4c1d95', '#1e293b'], col: ['#f472b6', '#facc15', '#22d3ee', '#a3e635'], items: ['globo', 'gorrofiesta', 'serpentina', 'papel', 'estrella', 'globo', 'punto'], n: 18, cel: '#fdf4ff', celT: '#581c87' },
+  pastel: { base: ['#f9a8d4', '#c4b5fd', '#93c5fd'], col: ['#ec4899', '#8b5cf6', '#3b82f6', '#f59e0b'], items: ['mariposa', 'nube', 'corazon', 'mariposa', 'estrella', 'nube', 'punto'], n: 12, cel: '#ffffff', celT: '#831843' },
+  real: { base: ['#3b0764', '#1e1b4b', '#4c1d95'], col: ['#fbbf24', '#a78bfa', '#f59e0b'], items: ['corona', 'flordelis', 'rombo', 'corona', 'chispa', 'flordelis'], fondo: 'reticula', n: 12, cel: '#faf5ff', celT: '#4c1d95' },
+  deportivo: { base: ['#052e16', '#14532d', '#0f172a'], col: ['#f8fafc', '#22c55e', '#facc15', '#3b82f6'], items: ['balon', 'copaTrofeo', 'estrella', 'balon', 'punto', 'estrella'], fondo: 'campo', n: 8, cel: '#f8fafc', celT: '#0f172a' },
+  navideno: { base: ['#7f1d1d', '#14532d', '#450a0a'], col: ['#fbbf24', '#dc2626', '#f8fafc', '#16a34a'], items: ['pino', 'regalo', 'campana', 'acebo', 'baston', 'bolanavidad', 'copo', 'pino'], fondo: 'nieve', n: 12, cel: '#fef2f2', celT: '#7f1d1d' },
+  halloween: { base: ['#1c1917', '#3b0764', '#0f0620'], col: ['#f97316', '#a855f7', '#84cc16', '#fde047'], items: ['calabaza', 'murcielago', 'luna', 'fantasma', 'telarana', 'murcielago', 'estrella', 'calabaza'], fondo: 'polvo', n: 12, cel: '#1c1917', celT: '#fed7aa' },
+  'gen-neon-nocturno': { base: ['#1e1b4b', '#581c87', '#0c4a6e'], col: ['#f472b6', '#c084fc', '#38bdf8', '#34d399'], items: ['chispa', 'estrella', 'chispa', 'punto', 'estrella'], fondo: 'polvo', n: 16, cel: '#faf5ff', celT: '#1a1a2e' },
+  'gen-carnaval': { base: ['#7f1d1d', '#c2410c', '#581c87'], col: ['#facc15', '#22d3ee', '#a3e635', '#f472b6'], items: ['mascara', 'globo', 'serpentina', 'pluma', 'estrella', 'papel', 'globo'], n: 16, cel: '#fffbeb', celT: '#7f1d1d' },
+  'gen-elegante-oro': { base: ['#1c1917', '#422006', '#0c0a09'], col: ['#d4af37', '#e5c76b', '#f5e6a8'], items: ['abanico', 'rombo', 'estrella', 'chispa', 'rombo'], fondo: 'reticula', n: 10, cel: '#fffbeb', celT: '#292524' },
+  'gen-pastel-fiesta': { base: ['#fbcfe8', '#ddd6fe', '#bae6fd'], col: ['#ec4899', '#8b5cf6', '#0ea5e9', '#f59e0b'], items: ['globo', 'gorrofiesta', 'serpentina', 'papel', 'estrella', 'punto', 'globo'], n: 16, cel: '#ffffff', celT: '#6b21a8' },
+  'gen-navidad-clasica': { base: ['#14532d', '#7f1d1d', '#052e16'], col: ['#dc2626', '#fbbf24', '#f8fafc', '#16a34a'], items: ['pino', 'campana', 'regalo', 'acebo', 'bolanavidad', 'baston', 'copo', 'pino'], fondo: 'nieve', n: 12, cel: '#fffbeb', celT: '#7f1d1d' },
+  'gen-halloween': { base: ['#0a0a0a', '#3b0764', '#7c2d12'], col: ['#f97316', '#a855f7', '#84cc16'], items: ['calabaza', 'fantasma', 'murcielago', 'telarana', 'luna', 'calabaza', 'estrella', 'murcielago'], fondo: 'polvo', n: 12, cel: '#292524', celT: '#fed7aa' },
+  'gen-ano-nuevo': { base: ['#0c0a09', '#1c1917', '#422006'], col: ['#d4af37', '#f0d878', '#f8fafc', '#f472b6'], items: ['fuego', 'copa', 'estrella', 'fuego', 'chispa', 'copa', 'fuego'], fondo: 'polvo', n: 12, cel: '#fffbeb', celT: '#292524' },
+  'gen-san-valentin': { base: ['#831843', '#be185d', '#4c0519'], col: ['#f472b6', '#fda4af', '#fecdd3', '#fb7185'], items: ['corazon', 'rosa', 'corazon', 'corazon', 'chispa', 'rosa', 'corazon'], n: 16, cel: '#fff1f2', celT: '#9f1239' },
+  'gen-pascua': { base: ['#a7f3d0', '#fde68a', '#fbcfe8'], col: ['#f472b6', '#60a5fa', '#facc15', '#a78bfa'], items: ['huevo', 'conejo', 'tulipan', 'huevo', 'margarita', 'hoja', 'huevo'], n: 14, cel: '#ffffff', celT: '#14532d' },
+  'gen-dia-madre': { base: ['#9d174d', '#db2777', '#f472b6'], col: ['#fbcfe8', '#fde68a', '#ffffff', '#f9a8d4'], items: ['rosa', 'mariposa', 'tulipan', 'corazon', 'margarita', 'hoja', 'rosa'], n: 14, cel: '#fff1f2', celT: '#831843' },
+  'gen-dia-padre': { base: ['#1e3a8a', '#1e40af', '#0f172a'], col: ['#60a5fa', '#f8fafc', '#94a3b8', '#fbbf24'], items: ['corbata', 'bigote', 'copaTrofeo', 'estrella', 'corbata', 'punto', 'bigote'], fondo: 'bandas', n: 10, cel: '#eff6ff', celT: '#1e3a8a' },
+  'gen-patriotico': { base: ['#1e3a8a', '#7f1d1d', '#0f172a'], col: ['#f8fafc', '#ef4444', '#60a5fa'], items: ['estrella', 'estrella', 'punto', 'estrella'], fondo: 'bandas', n: 12, cel: '#ffffff', celT: '#1e3a8a' },
+  'gen-verano': { base: ['#0c4a6e', '#0ea5e9', '#fde68a'], col: ['#fde047', '#fb923c', '#f472b6', '#ffffff'], items: ['sol', 'helado', 'sombrilla', 'estrellamar', 'concha', 'pez', 'sol'], fondo: 'mar', n: 10, cel: '#f0f9ff', celT: '#0c4a6e' },
+  'gen-otono': { base: ['#7c2d12', '#b45309', '#431407'], col: ['#ea580c', '#f59e0b', '#dc2626', '#fbbf24'], items: ['arce', 'hoja', 'bellota', 'calabaza', 'hongo', 'arce', 'hoja'], n: 14, cel: '#fffbeb', celT: '#7c2d12' },
+  'gen-invierno': { base: ['#0c4a6e', '#1e3a8a', '#075985'], col: ['#e0f2fe', '#ffffff', '#7dd3fc', '#bae6fd'], items: ['copo', 'munecodenieve', 'pino', 'copo', 'copo', 'punto', 'munecodenieve'], fondo: 'nieve', n: 12, cel: '#f0f9ff', celT: '#0c4a6e' },
+  'gen-primavera': { base: ['#166534', '#65a30d', '#bef264'], col: ['#f9a8d4', '#fde047', '#c4b5fd', '#fdba74'], items: ['flor', 'mariposa', 'tulipan', 'margarita', 'hoja', 'flor', 'mariposa'], n: 14, cel: '#f7fee7', celT: '#365314' },
+  'gen-espacio': { base: ['#020617', '#1e1b4b', '#312e81'], col: ['#a78bfa', '#f472b6', '#fde047', '#38bdf8'], items: ['planeta', 'cohete', 'luna', 'estrella', 'ovni', 'chispa', 'planeta', 'estrella'], fondo: 'polvo', n: 12, cel: '#eef2ff', celT: '#1e1b4b' },
+  'gen-dinosaurios': { base: ['#14532d', '#365314', '#78350f'], col: ['#84cc16', '#fde68a', '#fb923c', '#a3e635'], items: ['huelladino', 'helecho', 'huevodino', 'hueso', 'helecho', 'huelladino', 'huevodino'], n: 12, cel: '#f7fee7', celT: '#365314' },
+  'gen-safari': { base: ['#78350f', '#b45309', '#365314'], col: ['#fbbf24', '#84cc16', '#fb923c', '#fef3c7'], items: ['huella', 'hoja', 'sol', 'huella', 'palmera', 'huella', 'hoja'], fondo: 'dunas', n: 10, cel: '#fffbeb', celT: '#78350f' },
+  'gen-piratas': { base: ['#0c4a6e', '#0f172a', '#78350f'], col: ['#fbbf24', '#f8fafc', '#94a3b8', '#dc2626'], items: ['craneo', 'ancla', 'barco', 'moneda', 'craneo', 'punto', 'moneda'], fondo: 'mar', n: 10, cel: '#fef3c7', celT: '#451a03' },
+  'gen-unicornios': { base: ['#f9a8d4', '#c4b5fd', '#93c5fd'], col: ['#ec4899', '#8b5cf6', '#facc15', '#22d3ee'], items: ['cuerno', 'arcoiris', 'nube', 'corazon', 'estrella', 'cuerno', 'nube'], n: 12, cel: '#ffffff', celT: '#6b21a8' },
+  'gen-circo': { base: ['#7f1d1d', '#dc2626', '#1e3a8a'], col: ['#facc15', '#f8fafc', '#ef4444', '#60a5fa'], items: ['carpa', 'globo', 'estrella', 'payaso', 'papel', 'gorropayaso', 'globo'], fondo: 'bandas', n: 12, cel: '#fffbeb', celT: '#7f1d1d' },
+  'gen-superheroes': { base: ['#1e3a8a', '#b91c1c', '#0f172a'], col: ['#facc15', '#f8fafc', '#ef4444', '#60a5fa'], items: ['pop', 'rayo', 'estrella', 'pop', 'rayo', 'punto', 'estrella'], fondo: 'bandas', n: 10, cel: '#fef9c3', celT: '#1e3a8a' },
+  'gen-arcade': { base: ['#0f0f23', '#312e81', '#4a044e'], col: ['#22d3ee', '#f472b6', '#a3e635', '#facc15'], items: ['pixel', 'joystick', 'pixel', 'chispa', 'pixel', 'punto', 'joystick'], fondo: 'reticula', n: 14, cel: '#111827', celT: '#22d3ee' },
+  'gen-futbol': { base: ['#14532d', '#166534', '#052e16'], col: ['#f8fafc', '#facc15', '#22c55e'], items: ['balon', 'copaTrofeo', 'estrella', 'balon', 'punto', 'estrella'], fondo: 'campo', n: 8, cel: '#f0fdf4', celT: '#14532d' },
+  'gen-payasos': { base: ['#b91c1c', '#ea580c', '#6d28d9'], col: ['#fde047', '#38bdf8', '#f472b6', '#a3e635'], items: ['payaso', 'gorropayaso', 'globo', 'papel', 'serpentina', 'payaso', 'globo'], n: 14, cel: '#fffbeb', celT: '#7f1d1d' },
+  'gen-dulces': { base: ['#fbcfe8', '#e9d5ff', '#bae6fd'], col: ['#ec4899', '#8b5cf6', '#06b6d4', '#f59e0b'], items: ['caramelo', 'piruleta', 'cupcake', 'caramelo', 'punto', 'piruleta', 'cupcake'], n: 12, cel: '#ffffff', celT: '#9d174d' },
+  'gen-robots': { base: ['#0f172a', '#334155', '#164e63'], col: ['#22d3ee', '#94a3b8', '#fbbf24', '#a3e635'], items: ['robot', 'engranaje', 'chip', 'engranaje', 'rayo', 'pixel', 'robot'], fondo: 'reticula', n: 10, cel: '#f1f5f9', celT: '#0f172a' },
+  'gen-casino': { base: ['#052e16', '#14532d', '#450a0a'], col: ['#d4af37', '#dc2626', '#f8fafc', '#0f172a'], items: ['ficha', 'pica', 'dado', 'corazon', 'trebol', 'ficha', 'diamante', 'pica'], n: 12, cel: '#fefce8', celT: '#052e16' },
+  'gen-gala-plateada': { base: ['#27272a', '#52525b', '#18181b'], col: ['#e4e4e7', '#a1a1aa', '#f8fafc'], items: ['copa', 'estrella', 'chispa', 'perla', 'chispa', 'copa'], fondo: 'polvo', n: 12, cel: '#fafafa', celT: '#27272a' },
+  'gen-art-deco': { base: ['#0c0a09', '#1c1917', '#292524'], col: ['#d4af37', '#f5d78e', '#b8860b'], items: ['abanico', 'rombo', 'abanico', 'chispa', 'rombo'], fondo: 'reticula', n: 10, cel: '#fffbeb', celT: '#1c1917' },
+  'gen-vintage': { base: ['#78350f', '#92400e', '#451a03'], col: ['#fde68a', '#d6a55a', '#fef3c7'], items: ['flordelis', 'rombo', 'rosa', 'flordelis', 'chispa', 'rombo'], fondo: 'reticula', n: 10, cel: '#fef3c7', celT: '#451a03' },
+  'gen-minimalista': { base: ['#18181b', '#27272a', '#3f3f46'], col: ['#fafafa', '#a1a1aa', '#71717a'], items: ['aro', 'cruz', 'aro', 'cruz', 'punto'], fondo: 'reticula', n: 10, cel: '#fafafa', celT: '#18181b' },
+  'gen-champagne': { base: ['#422006', '#78350f', '#1c1917'], col: ['#f5d78e', '#d4af37', '#fef3c7'], items: ['copa', 'burbuja', 'estrella', 'copa', 'burbuja', 'chispa', 'burbuja'], fondo: 'polvo', n: 12, cel: '#fffbeb', celT: '#422006' },
+  'gen-esmeralda': { base: ['#064e3b', '#059669', '#022c22'], col: ['#6ee7b7', '#a7f3d0', '#34d399', '#fde68a'], items: ['gema', 'chispa', 'gema', 'punto', 'gema', 'chispa'], fondo: 'polvo', n: 12, cel: '#ecfdf5', celT: '#064e3b' },
+  'gen-zafiro': { base: ['#1e3a8a', '#1d4ed8', '#0f172a'], col: ['#93c5fd', '#bfdbfe', '#60a5fa', '#f8fafc'], items: ['gema', 'chispa', 'gema', 'estrella', 'gema', 'chispa'], fondo: 'polvo', n: 12, cel: '#eff6ff', celT: '#1e3a8a' },
+  'gen-tropical': { base: ['#0f766e', '#f59e0b', '#be185d'], col: ['#fb7185', '#fde047', '#4ade80', '#fb923c'], items: ['hibisco', 'palmera', 'pina', 'hoja', 'hibisco', 'sol', 'hoja'], n: 14, cel: '#fffbeb', celT: '#134e4a' },
+  'gen-playa': { base: ['#0e7490', '#22d3ee', '#fde68a'], col: ['#fb923c', '#f472b6', '#ffffff', '#facc15'], items: ['sombrilla', 'estrellamar', 'concha', 'palmera', 'concha', 'burbuja', 'estrellamar'], fondo: 'mar', n: 10, cel: '#f0fdfa', celT: '#155e75' },
+  'gen-bosque': { base: ['#052e16', '#166534', '#14532d'], col: ['#f87171', '#fde68a', '#86efac', '#fbbf24'], items: ['hongo', 'pino', 'hoja', 'luciernaga', 'hongo', 'hoja', 'luciernaga', 'pino'], fondo: 'polvo', n: 12, cel: '#f0fdf4', celT: '#14532d' },
+  'gen-jardin': { base: ['#86198f', '#be185d', '#166534'], col: ['#f9a8d4', '#fde047', '#c4b5fd', '#fdba74'], items: ['rosa', 'tulipan', 'mariposa', 'margarita', 'hoja', 'flor', 'rosa'], n: 14, cel: '#fdf4ff', celT: '#701a75' },
+  'gen-oceano': { base: ['#082f49', '#0e7490', '#164e63'], col: ['#67e8f9', '#f9a8d4', '#fde68a', '#ffffff'], items: ['pez', 'estrellamar', 'burbuja', 'concha', 'pez', 'burbuja', 'ola'], fondo: 'mar', n: 12, cel: '#ecfeff', celT: '#164e63' },
+  'gen-desierto': { base: ['#7c2d12', '#c2410c', '#fbbf24'], col: ['#fde68a', '#16a34a', '#f97316', '#fef3c7'], items: ['cactus', 'sol', 'cactus', 'huella', 'chispa', 'cactus'], fondo: 'dunas', n: 8, cel: '#fffbeb', celT: '#7c2d12' },
+  'gen-montana': { base: ['#0c4a6e', '#0369a1', '#94a3b8'], col: ['#f8fafc', '#e0f2fe', '#7dd3fc'], items: ['montana', 'pino', 'copo', 'montana', 'copo', 'pino'], fondo: 'nieve', n: 10, cel: '#f0f9ff', celT: '#0c4a6e' },
+  'gen-arcoiris': { base: ['#fde68a', '#fbcfe8', '#bae6fd'], col: ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6'], items: ['arcoiris', 'nube', 'arcoiris', 'estrella', 'nube', 'punto', 'arcoiris'], n: 10, cel: '#ffffff', celT: '#7c2d12' },
+  'gen-atardecer': { base: ['#4c1d95', '#db2777', '#f97316'], col: ['#fde68a', '#fdba74', '#ffffff'], items: ['palmera', 'estrella', 'chispa', 'palmera', 'estrella', 'chispa'], fondo: 'sol', n: 8, cel: '#fff7ed', celT: '#7c2d12' },
+  'gen-azul-mono': { base: ['#1e3a8a', '#2563eb', '#172554'], col: ['#93c5fd', '#bfdbfe', '#dbeafe', '#60a5fa'], items: ['gota', 'burbuja', 'ola', 'gota', 'estrella', 'burbuja'], fondo: 'mar', n: 12, cel: '#eff6ff', celT: '#1e3a8a' },
+  'gen-rosa-mono': { base: ['#831843', '#db2777', '#500724'], col: ['#fbcfe8', '#f9a8d4', '#fce7f3', '#fda4af'], items: ['corazon', 'rosa', 'perla', 'corazon', 'chispa', 'perla', 'rosa'], n: 14, cel: '#fdf2f8', celT: '#831843' },
+  'gen-blanco-dorado': { base: ['#fffbeb', '#fef3c7', '#fde68a'], col: ['#b8860b', '#d4af37', '#a16207'], items: ['estrella', 'chispa', 'rombo', 'estrella', 'abanico', 'chispa'], n: 12, cel: '#ffffff', celT: '#713f12' },
+  'gen-lavanda': { base: ['#4c1d95', '#7c3aed', '#3b0764'], col: ['#ddd6fe', '#c4b5fd', '#e9d5ff', '#a78bfa'], items: ['lavanda', 'mariposa', 'flor', 'lavanda', 'chispa', 'hoja', 'lavanda'], n: 12, cel: '#f5f3ff', celT: '#4c1d95' },
+  'gen-menta': { base: ['#115e59', '#14b8a6', '#064e3b'], col: ['#a7f3d0', '#99f6e4', '#ccfbf1', '#5eead4'], items: ['hoja', 'hoja', 'burbuja', 'hoja', 'punto', 'burbuja', 'hoja'], n: 14, cel: '#f0fdfa', celT: '#134e4a' },
+  'gen-fiesta-mexicana': { base: ['#166534', '#b91c1c', '#a16207'], col: ['#facc15', '#f472b6', '#22d3ee', '#fb923c'], items: ['sombrero', 'cactus', 'roseta', 'papelpicado', 'roseta', 'papelpicado', 'cactus'], n: 12, cel: '#fffbeb', celT: '#7f1d1d' },
+  'gen-oktoberfest': { base: ['#1e3a8a', '#1d4ed8', '#0f172a'], col: ['#f8fafc', '#facc15', '#93c5fd'], items: ['jarra', 'pretzel', 'hoja', 'jarra', 'rombo', 'pretzel'], fondo: 'rombos', n: 8, cel: '#eff6ff', celT: '#1e3a8a' },
+  'gen-hawaiana': { base: ['#0f766e', '#f97316', '#be185d'], col: ['#f472b6', '#fde047', '#fb923c', '#4ade80'], items: ['hibisco', 'palmera', 'pina', 'sol', 'hibisco', 'hoja', 'pina'], n: 12, cel: '#fff7ed', celT: '#9a3412' },
+  'gen-mardi-gras': { base: ['#581c87', '#166534', '#78350f'], col: ['#facc15', '#a855f7', '#22c55e'], items: ['mascara', 'flordelis', 'estrella', 'mascara', 'perla', 'serpentina', 'flordelis'], n: 12, cel: '#faf5ff', celT: '#581c87' },
+  'gen-carnaval-brasil': { base: ['#166534', '#15803d', '#a16207'], col: ['#facc15', '#3b82f6', '#f472b6', '#22d3ee'], items: ['pluma', 'estrella', 'pluma', 'serpentina', 'sol', 'punto', 'pluma'], n: 12, cel: '#f7fee7', celT: '#14532d' },
+  'gen-cumpleanos': { base: ['#be185d', '#ea580c', '#7c3aed'], col: ['#fde047', '#38bdf8', '#a3e635', '#f9a8d4'], items: ['pastel', 'globo', 'gorrofiesta', 'regalo', 'globo', 'papel', 'pastel'], n: 14, cel: '#fffbeb', celT: '#831843' },
+  'gen-baby-shower-celeste': { base: ['#bfdbfe', '#93c5fd', '#dbeafe'], col: ['#3b82f6', '#f8fafc', '#fde68a', '#93c5fd'], items: ['osito', 'nube', 'chupon', 'estrella', 'luna', 'nube', 'osito'], n: 12, cel: '#ffffff', celT: '#1e3a8a' },
+  'gen-baby-shower-rosa': { base: ['#fbcfe8', '#f9a8d4', '#fce7f3'], col: ['#ec4899', '#f8fafc', '#fde68a', '#f9a8d4'], items: ['osito', 'nube', 'lazo', 'estrella', 'luna', 'corazon', 'osito'], n: 12, cel: '#ffffff', celT: '#831843' },
+  'gen-boda': { base: ['#fffbeb', '#fef3c7', '#fce7f3'], col: ['#d4af37', '#f9a8d4', '#ffffff', '#b8860b'], items: ['anillos', 'rosa', 'corazon', 'campana', 'rosa', 'chispa', 'corazon'], n: 12, cel: '#ffffff', celT: '#713f12' },
+  'gen-regreso-clases': { base: ['#14532d', '#166534', '#1e3a8a'], col: ['#fde047', '#f8fafc', '#ef4444', '#60a5fa'], items: ['manzana', 'lapiz', 'libro', 'estrella', 'lapiz', 'manzana', 'libro'], n: 10, cel: '#fefce8', celT: '#14532d' },
+  'gen-graduacion': { base: ['#1e3a8a', '#0f172a', '#78350f'], col: ['#fbbf24', '#f8fafc', '#d4af37'], items: ['birrete', 'estrella', 'libro', 'birrete', 'chispa', 'estrella'], n: 10, cel: '#eff6ff', celT: '#1e3a8a' },
+  'gen-ojo-turco': { base: ['#1e3a8a', '#0e7490', '#0f172a'], col: ['#38bdf8', '#f8fafc', '#1d4ed8', '#fbbf24'], items: ['nazar', 'roseta', 'nazar', 'chispa', 'nazar', 'punto', 'roseta'], n: 10, cel: '#eff6ff', celT: '#1e3a8a' },
+};
+
+// Ítems que faltaban (definidos acá por orden de lectura de FI_TEMAS).
+FI_ITEMS.sombrero = (c, c2, st) => fiE(0, 12, 29, 8, c, st) + fiP('M-13 12 C-13 -18 13 -18 13 12Z', c, st, 1.4) + fiR(-13, 4, 26, 5, c2, st, 1) + fiC(0, -14, 3, c2);
+FI_ITEMS.papelpicado = (c, c2, st) => fiP('M-21 -15 L21 -15 L21 13 L14 20 L7 13 L0 20 L-7 13 L-14 20 L-21 13Z', c, st, 1.3) + fiC(-11, -4, 3.2, '#fff') + fiC(0, -4, 3.2, '#fff') + fiC(11, -4, 3.2, '#fff') + fiL('M-24 -15 L24 -15', c2, 2.4);
+FI_ITEMS.jarra = (c, c2, st) => fiL('M13 -6 C27 -6 27 15 13 15', '#92400e', 4.2) + fiR(-13, -14, 26, 36, '#fbbf24', '#92400e', 3) + fiP('M-15 -14 C-16 -27 -6 -23 0 -26 C6 -23 16 -27 15 -14Z', '#ffffff', '#cbd5e1', 1.2) + fiL('M-6 -6 L-6 16 M0 -6 L0 16 M6 -6 L6 16', '#f59e0b', 1.2);
+FI_ITEMS.pretzel = (c, c2, st) => fiL('M-14 13 C-26 -8 -10 -22 0 -7 C10 -22 26 -8 14 13 C6 23 -6 23 -14 13Z', '#b45309', 6.5) + fiL('M-14 13 L14 -1 M14 13 L-14 -1', '#b45309', 5) + fiC(-6, -14, 1, '#fef3c7') + fiC(7, -12, 1, '#fef3c7') + fiC(0, 18, 1, '#fef3c7');
+
+function fiPaleta(t, spec) {
+  if (spec && spec.col) return spec.col;
+  const vistos = new Set();
+  const base = [t.bordeColor].concat(t.headerColores).filter((c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c));
+  const paleta = [];
+  base.forEach((c) => { const k = c.toLowerCase(); if (!vistos.has(k)) { vistos.add(k); paleta.push(c); } });
+  return paleta.slice(0, 4);
+}
+
+function fiUri(id, t, spec) {
+  const r = fiRng(fiHash(id));
+  const col = fiPaleta(t, spec);
+  const items = (spec && spec.items) || ['bola', 'punto', 'estrella', 'chispa'];
+  const base = fondoCartonReal(t);
+  const primera = (base.match(/#[0-9a-f]{6}/i) || ['#1e293b'])[0];
+  const [br, bg, bb] = hexToRgb(primera);
+  const claro = (0.299 * br + 0.587 * bg + 0.114 * bb) > 150;
+  let out = '<defs><radialGradient id="v" cx="50%" cy="38%" r="70%"><stop offset="0" stop-color="#ffffff" stop-opacity="' + (claro ? '0.38' : '0.16') + '"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient></defs>';
+  out += '<rect width="300" height="420" fill="url(#v)"/>';
+  if (spec && spec.fondo) out += fiFondo(spec.fondo, col, r);
+  fiPosiciones(r, (spec && spec.n) || 12).forEach((p, i) => {
+    const fn = FI_ITEMS[items[i % items.length]] || FI_ITEMS.punto;
+    let c = col[i % col.length];
+    if (claro) c = mezclarColor(c, '#000000', 0.1);
+    const c2 = col[(i + 1) % col.length];
+    out += '<g transform="translate(' + fiN(p.x) + ' ' + fiN(p.y) + ') rotate(' + fiN(fn === FI_ITEMS.telarana || fn === FI_ITEMS.copaTrofeo || fn === FI_ITEMS.cohete ? p.rot % 50 - 25 : p.rot) + ') scale(' + fiN(p.s) + ')">' + fn(c, c2, fiTrazo(c)) + '</g>';
+  });
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 420" preserveAspectRatio="xMidYMid slice">' + out + '</svg>';
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
+function aplicarFondosIlustrados() {
+  Object.keys(CARD_THEMES).forEach((id) => {
+    const t = CARD_THEMES[id];
+    if (t.plano || t.cartonImagen) return;
+    const spec = FI_TEMAS[id];
+    if (spec && spec.base) t.cartonFondo = spec.base;
+    if (spec && spec.celT) t.numeroTexto = spec.celT;
+    const celda = spec && spec.cel ? spec.cel : t.numeroFondo;
+    // Casillas translúcidas: dejan ver la ilustración entre los números.
+    if (typeof celda === 'string' && /^#[0-9a-f]{6}$/i.test(celda)) {
+      const [r, g, b] = hexToRgb(celda);
+      t.numeroFondo = 'rgba(' + r + ', ' + g + ', ' + b + ', 0.86)';
+    }
+    let cache = null;
+    Object.defineProperty(t, 'cartonImagen', {
+      enumerable: true,
+      configurable: true,
+      get() { if (!cache) cache = fiUri(id, t, spec); return cache; },
+    });
+  });
+}
+aplicarFondosIlustrados();
+// <<< FONDOS_ILUSTRADOS
+
 // ---------------------------------------------------------------------------
 // API helper
 // ---------------------------------------------------------------------------
@@ -6779,7 +7136,11 @@ function TemaCartonPicker() {
               onClick={() => elegirTema(id)}
               className={`text-left rounded-xl border-2 p-2 transition disabled:opacity-60 ${activo ? 'border-bingoaccent bg-bingopurple/10' : 'border-slate-700 hover:border-slate-600'}`}
             >
-              <div className="flex gap-0.5 mb-1.5">
+              {/* Vista previa con el fondo ilustrado propio de cada tema (ver FONDOS_ILUSTRADOS). */}
+              <div
+                className="flex gap-0.5 mb-1.5 p-1.5 pt-4 rounded-lg"
+                style={t.plano ? undefined : { border: '1px solid ' + t.bordeColor, background: (t.cartonImagen ? 'url("' + t.cartonImagen + '") center / cover no-repeat, ' : '') + fondoCartonReal(t) }}
+              >
                 {dots.map((hex, i) => <div key={i} className="flex-1 h-4 rounded-sm" style={{ background: hex }} />)}
               </div>
               <div className="flex items-center gap-1.5">
