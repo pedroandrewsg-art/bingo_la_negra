@@ -126,12 +126,21 @@ async function restaurarCredencialesDesdeR2() {
   }
 }
 
-function borrarCredenciales() {
+// Async y ESPERADA por quien la llama (ver el close-handler y desconectar()
+// más abajo) -- antes el borrado en R2 era "fire and forget" (sin await), así
+// que si algo reconectaba enseguida (el retry automático de más abajo, o un
+// segundo click en "Desconectar"), restaurarCredencialesDesdeR2() podía
+// ganarle la carrera al DELETE y traer de vuelta el backup viejo (ya
+// inválido) medio segundo después de haberlo borrado -- el bot quedaba
+// "desconectado" en apariencia pero con la MISMA sesión muerta adentro.
+async function borrarCredenciales() {
   clearTimeout(saveCredsTimer);
   try {
     fs.rmSync(authDir, { recursive: true, force: true });
   } catch (e) { /* no-op */ }
-  r2.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: R2_AUTH_KEY })).catch(() => {});
+  try {
+    await r2.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: R2_AUTH_KEY }));
+  } catch (e) { /* no-op */ }
 }
 
 async function cargarGrupos() {
@@ -212,15 +221,19 @@ async function initWhatsappBot(io) {
       estado.conectado = false;
       estado.conectando = false;
       emitirEstado();
-      if (code === DisconnectReason.loggedOut) {
-        // Sesión invalidada -- puede ser un logout real desde el celular, o
-        // (visto en producción) un "conflict" 401 justo después de escanear
-        // el QR, cuando WhatsApp rechaza el emparejamiento. En cualquier
-        // caso hay que escanear un QR nuevo -- pero antes había que venir a
-        // reiniciar el bot a mano para que apareciera uno; ahora se borran
-        // las credenciales viejas y se pide uno nuevo solo, sin intervención.
-        console.log('[whatsappBot] sesión deslogueada/rechazada, pidiendo un QR nuevo automáticamente');
-        borrarCredenciales();
+      if (code === DisconnectReason.loggedOut || code === DisconnectReason.forbidden) {
+        // Sesión invalidada -- puede ser un logout real desde el celular, un
+        // "conflict" 401 justo después de escanear el QR (WhatsApp rechaza
+        // el emparejamiento), o un 403 "forbidden" cuando WhatsApp suspende
+        // el número o el bot pierde acceso al grupo (visto en producción:
+        // sin este segundo caso, el bot quedaba reintentando cada 5s para
+        // siempre con la MISMA sesión ya inválida, sin pedir nunca un QR
+        // nuevo -- nadie se enteraba hasta revisar los logs a mano). En
+        // cualquiera de los dos casos hay que escanear un QR nuevo -- se
+        // borran las credenciales viejas y se pide uno nuevo solo, sin
+        // intervención.
+        console.log('[whatsappBot] sesión deslogueada/rechazada/suspendida (code ' + code + '), pidiendo un QR nuevo automáticamente');
+        await borrarCredenciales();
         setTimeout(() => initWhatsappBot(io), 3000);
       } else {
         // Cualquier otro corte (red, WhatsApp reiniciando la conexión, el
@@ -255,7 +268,7 @@ async function desconectar() {
     try { await sock.logout(); } catch (e) { /* no-op, puede que ya esté cerrada */ }
     try { sock.end(undefined); } catch (e) { /* no-op */ }
   }
-  borrarCredenciales();
+  await borrarCredenciales();
   estado.conectado = false;
   estado.qrDataUrl = null;
   estado.numero = null;
