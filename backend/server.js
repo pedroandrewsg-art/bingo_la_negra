@@ -23,6 +23,11 @@ const { initWhatsappBot } = require('./whatsappBot');
 const { r2, BUCKET, GetObjectCommand } = require('./r2');
 
 const app = express();
+
+// Panel de Control: suspensión remota y mensajes emergentes (ver PanelControlSistemas).
+const control = require('./controlCliente');
+app.use(control.middleware());
+control.iniciar();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
