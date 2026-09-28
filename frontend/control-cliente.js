@@ -98,11 +98,30 @@
   var cola = [];
   var mostrando = false;
   function clave(m) { return 'ctrlmsg:' + m.id + ':' + m.updated_at; }
+  // modo_repeticion: 'una_vez' (para siempre, localStorage) | 'sesion' (hasta
+  // que se cierre la pestaña, sessionStorage) | 'intervalo' (se repite cada
+  // frecuencia_horas, guardando cuándo se mostró por última vez). Si el panel
+  // aún no manda modo_repeticion (versión vieja de la API) se cae al
+  // comportamiento anterior según una_vez.
+  function modoDe(m) { return m.modo_repeticion || (m.una_vez ? 'una_vez' : 'sesion'); }
   function yaVisto(m) {
-    try { return (m.una_vez ? localStorage : sessionStorage).getItem(clave(m)) === '1'; } catch (e) { return false; }
+    try {
+      var modo = modoDe(m);
+      if (modo === 'intervalo') {
+        var ultimo = Number(localStorage.getItem(clave(m)));
+        if (!ultimo) return false;
+        var horasMs = (Number(m.frecuencia_horas) || 0) * 3600000;
+        return horasMs > 0 && (Date.now() - ultimo) < horasMs;
+      }
+      return (modo === 'sesion' ? sessionStorage : localStorage).getItem(clave(m)) === '1';
+    } catch (e) { return false; }
   }
   function marcarVisto(m) {
-    try { (m.una_vez ? localStorage : sessionStorage).setItem(clave(m), '1'); } catch (e) { /* sin storage: puede repetirse */ }
+    try {
+      var modo = modoDe(m);
+      if (modo === 'intervalo') { localStorage.setItem(clave(m), String(Date.now())); return; }
+      (modo === 'sesion' ? sessionStorage : localStorage).setItem(clave(m), '1');
+    } catch (e) { /* sin storage: puede repetirse */ }
   }
 
   function siguiente() {
