@@ -220,6 +220,21 @@
     if (segundos > 0) setTimeout(ocultarAnuncio, segundos * 1000);
   }
 
+  // ---- Popunder (aparte del banner a propósito) ------------------------------
+  // No vive en ninguna barra: es solo el script de la red, insertado oculto
+  // una vez por carga de página. El propio script de la red escucha el
+  // siguiente click en la página para abrir su pestaña -- no hacemos nada más.
+  var popunderInsertado = false;
+  function insertarPopunder(popunder) {
+    if (popunderInsertado || estaSuspendido) return;
+    if (!popunder || !popunder.activo || !popunder.html) return;
+    popunderInsertado = true;
+    var contenedor = el('div');
+    contenedor.style.display = 'none';
+    insertarConScripts(contenedor, popunder.html);
+    document.body.appendChild(contenedor);
+  }
+
   // ---- Consulta periódica ----------------------------------------------------
   function consultar() {
     fetch(API + '/control/estado', { cache: 'no-store' })
@@ -227,7 +242,7 @@
       .then(function (d) {
         if (!d) return;
         if (d.suspendido) { mostrarSuspension(d); ocultarAnuncio(); }
-        else { quitarSuspension(); encolar(d.mensajes); mostrarAnuncio(d.anuncio); }
+        else { quitarSuspension(); encolar(d.mensajes); mostrarAnuncio(d.anuncio); insertarPopunder(d.popunder); }
       })
       .catch(function () { /* sin red: no se toca nada */ });
   }
