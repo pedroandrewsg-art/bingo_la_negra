@@ -21,7 +21,7 @@ const INTERVALO_MS = 30 * 1000;
 const TIMEOUT_MS = 8000;
 const RUTAS_LIBRES = ['/api/health', '/api/control/estado'];
 
-let estado = { suspendido: false, mensaje_admin: '', mensaje_jugadores: '', mensajes: [] };
+let estado = { suspendido: false, mensaje_admin: '', mensaje_jugadores: '', mensajes: [], anuncio: { activo: false, slots: [], segundos: 0 } };
 let ultimoOk = null;
 let iniciado = false;
 
@@ -74,6 +74,7 @@ function middleware() {
         mensaje_admin: estado.mensaje_admin,
         mensaje_jugadores: estado.mensaje_jugadores,
         mensajes: estado.mensajes || [],
+        anuncio: estado.anuncio || { activo: false, slots: [], segundos: 0 },
       });
     }
     if (estado.suspendido && req.path.startsWith('/api/') && !RUTAS_LIBRES.includes(req.path)) {
