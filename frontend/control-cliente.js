@@ -46,10 +46,7 @@
     '.ctrl-enlace{display:inline-block;margin-top:18px;font-size:12px;color:#64748b;background:none;border:0;cursor:pointer;text-decoration:underline;}' +
     '.ctrl-caja.ctrl-info{border-top:4px solid #38bdf8;}' +
     '.ctrl-caja.ctrl-aviso{border-top:4px solid #fbbf24;}' +
-    '.ctrl-caja.ctrl-urgente{border-top:4px solid #f43f5e;}' +
-    '.ctrl-ads{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(2,6,23,.85);backdrop-filter:blur(2px);padding:4px 8px;padding-bottom:calc(4px + env(safe-area-inset-bottom));}' +
-    '.ctrl-ads-caja{max-width:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;}' +
-    '.ctrl-ads-cerrar{flex-shrink:0;width:24px;height:24px;border-radius:999px;border:1px solid #334155;background:#0f172a;color:#94a3b8;font-size:15px;line-height:1;cursor:pointer;}';
+    '.ctrl-caja.ctrl-urgente{border-top:4px solid #f43f5e;}';
   document.head.appendChild(css);
 
   function el(tag, cls, texto) {
@@ -156,93 +153,14 @@
     siguiente();
   }
 
-  // ---- Publicidad (barra discreta, no intrusiva) -----------------------------
-  // Se sortea UNA sola vez por carga de página (no en cada consulta de 45s,
-  // para que no cambie de red mientras el jugador está viendo la misma
-  // pestaña) y respeta el peso (%) que el dueño configuró para cada red.
-  var anuncioDecidido = false;
-  var barraAnuncio = null;
-
-  function elegirSlot(slots) {
-    var total = slots.reduce(function (a, s) { return a + (Number(s.peso) || 0); }, 0);
-    if (total <= 0) return slots[0];
-    var r = Math.random() * total;
-    for (var i = 0; i < slots.length; i++) {
-      r -= (Number(slots[i].peso) || 0);
-      if (r <= 0) return slots[i];
-    }
-    return slots[slots.length - 1];
-  }
-
-  // innerHTML no ejecuta <script>: hay que recrearlos a mano para que el
-  // código de la red de publicidad realmente corra.
-  function insertarConScripts(contenedor, html) {
-    var tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    Array.prototype.slice.call(tmp.childNodes).forEach(function (nodo) {
-      if (nodo.tagName === 'SCRIPT') {
-        var s = document.createElement('script');
-        Array.prototype.forEach.call(nodo.attributes, function (a) { s.setAttribute(a.name, a.value); });
-        s.text = nodo.textContent;
-        contenedor.appendChild(s);
-      } else {
-        contenedor.appendChild(nodo);
-      }
-    });
-  }
-
-  function ocultarAnuncio() {
-    if (barraAnuncio) { barraAnuncio.remove(); barraAnuncio = null; }
-  }
-
-  function mostrarAnuncio(anuncio) {
-    if (anuncioDecidido || estaSuspendido) return;
-    if (!anuncio || !anuncio.activo || !anuncio.slots || !anuncio.slots.length) return;
-    anuncioDecidido = true; // una sola vez por carga de página, aunque vuelva a consultar
-    try { if (sessionStorage.getItem('ctrlads:cerrado') === '1') return; } catch (e) {}
-
-    var slot = elegirSlot(anuncio.slots);
-    if (!slot || !slot.html) return;
-
-    barraAnuncio = el('div', 'ctrl-ads');
-    var caja = el('div', 'ctrl-ads-caja');
-    insertarConScripts(caja, slot.html);
-    var cerrar = el('button', 'ctrl-ads-cerrar', '×');
-    cerrar.onclick = function () {
-      try { sessionStorage.setItem('ctrlads:cerrado', '1'); } catch (e) {}
-      ocultarAnuncio();
-    };
-    barraAnuncio.appendChild(caja);
-    barraAnuncio.appendChild(cerrar);
-    document.body.appendChild(barraAnuncio);
-
-    var segundos = Number(anuncio.segundos) || 0;
-    if (segundos > 0) setTimeout(ocultarAnuncio, segundos * 1000);
-  }
-
-  // ---- Popunder (aparte del banner a propósito) ------------------------------
-  // No vive en ninguna barra: es solo el script de la red, insertado oculto
-  // una vez por carga de página. El propio script de la red escucha el
-  // siguiente click en la página para abrir su pestaña -- no hacemos nada más.
-  var popunderInsertado = false;
-  function insertarPopunder(popunder) {
-    if (popunderInsertado || estaSuspendido) return;
-    if (!popunder || !popunder.activo || !popunder.html) return;
-    popunderInsertado = true;
-    var contenedor = el('div');
-    contenedor.style.display = 'none';
-    insertarConScripts(contenedor, popunder.html);
-    document.body.appendChild(contenedor);
-  }
-
   // ---- Consulta periódica ----------------------------------------------------
   function consultar() {
     fetch(API + '/control/estado', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d) return;
-        if (d.suspendido) { mostrarSuspension(d); ocultarAnuncio(); }
-        else { quitarSuspension(); encolar(d.mensajes); mostrarAnuncio(d.anuncio); insertarPopunder(d.popunder); }
+        if (d.suspendido) { mostrarSuspension(d); }
+        else { quitarSuspension(); encolar(d.mensajes); }
       })
       .catch(function () { /* sin red: no se toca nada */ });
   }
